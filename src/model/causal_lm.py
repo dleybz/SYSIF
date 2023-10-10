@@ -5,11 +5,11 @@ from typing import Callable
 
 
 class CausalLanguageModel:
-    def __init__(self, model_name, device="cpu", fast_tkn=True):
+    def __init__(self, model_name, device="cpu", fast_tkn=True, fp16=True):
         self.device = torch.device(device)
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name).to(self.device)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16 if fp16 else torch.float32).to(self.device)
         
     def generate_text(self, prompt, max_length=50, num_return_sequences=1):
         input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)

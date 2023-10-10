@@ -7,8 +7,6 @@ from src.data.dataset_loader import tokenize_slice_batch, load_hf_dataset_with_s
 
 from tqdm import tqdm
 
-DTYPE=torch.float32 #torch.float16
-
 def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_count, old_token_count, device):
     '''
     unit_tokens: Table [n_layer, n_tokens, n_kn] where the accummulated value of token/activation pairs is stored. 
@@ -54,7 +52,8 @@ def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'
     old_average = old_average.to(device)
     return (new_item + (old_count) * old_average) / (new_count)
 
-def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, window_stride, device, mode=['input', 'output']):
+def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, window_stride, device, mode=['input', 'output'], fp16=True):
+    DTYPE=torch.float16 if fp16 else torch.float32
     # dataset: hugging face dataset
     # model: hugging face model
     kn_act_buffer = model.enable_output_knowledge_neurons()
@@ -84,8 +83,8 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
         
         # accumulate input and output token ids
         tokens_ids = {
-            'input': input_ids.flatten().to(device),
-            'output': torch.argmax(output.logits.detach(), dim=-1).flatten().to(device)
+            'input': input_ids.flatten().to(device).type(DTYPE),
+            'output': torch.argmax(output.logits.detach(), dim=-1).flatten().to(device).type(DTYPE)
         }
         # count unique tokens
         unique_id = {}
@@ -98,7 +97,7 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
             Save an old_tokens_count, used to compute the cumulative average
             """
             unique_tokens_with_count = torch.unique(tokens_ids[mode], return_counts=True)
-            unique_id[mode] = unique_tokens_with_count[0].cpu() # set of unique tokens in the input (resp. output)
+            unique_id[mode] = unique_tokens_with_count[0].cpu().long() # set of unique tokens in the input (resp. output)
             count_id = unique_tokens_with_count[1].cpu() # corresponding count for each unique token
             old_token_count[mode] = tokens_count[mode].clone().detach() # save old count
             tokens_count[mode][unique_id[mode]] += count_id # update new count
@@ -110,7 +109,7 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
                 with torch.no_grad():
                     unit_tokens_accum[mode] = update_token_unit(
                         unit_tokens=unit_tokens_accum[mode],
-                        kn_act=kn_act_buffer,
+                        kn_act=kn_act_buffer.type(DTYPE),
                         layer=l,
                         unique_id=unique_id[mode],
                         token_ids=tokens_ids[mode],
