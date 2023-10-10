@@ -7,7 +7,7 @@ from src.data.dataset_loader import tokenize_slice_batch, load_hf_dataset_with_s
 
 from tqdm import tqdm
 
-def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_count, old_token_count, device):
+def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_count, old_token_count, device, dtype):
     '''
     unit_tokens: Table [n_layer, n_tokens, n_kn] where the accummulated value of token/activation pairs is stored. 
     kn_act: knowledge neuron activations
@@ -24,7 +24,7 @@ def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_c
     # create an index mask, to only process tokens in the batch. [n_tokens_in_the_input, n_unique_tokens_in_the_input]
     expand_unique_id = unique_id.unsqueeze(0).expand(token_ids.size(0), -1)
     # in the mask, line i correspond to the location of unique token i in the input (resp. output) sequence
-    index_mask = (expand_unique_id == token_ids.unsqueeze(-1)).t().type(DTYPE) 
+    index_mask = (expand_unique_id == token_ids.unsqueeze(-1)).t().type(dtype) 
     # compute the unit-token activations for the batch, on the device
     """
     index_mask: [n_uniques_in_sequence, n_tokens_in_sequence]. Line i has 1 where token i appear in the sequence
@@ -33,7 +33,7 @@ def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_c
     batch_unit_token_cum: index_mask x kn_act[layer] = [n_uniques_in_sequence, n_feats].
     Line i correspond to the accumulated kn features obtained when token i is the input.
     """
-    batch_unit_token_cum = torch.matmul(index_mask.to(device), kn_act[layer].to(device).view(kn_d1*kn_d2, kn_d3))
+    batch_unit_token_cum = torch.matmul(index_mask.to(device), kn_act[layer].to(device).view(kn_d1*kn_d2, kn_d3).type(dtype))
     # update the cumuluative average
     unit_tokens[layer][unique_id] = cumulative_average(
         new_item    = batch_unit_token_cum,
@@ -109,12 +109,18 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
                 with torch.no_grad():
                     unit_tokens_accum[mode] = update_token_unit(
                         unit_tokens=unit_tokens_accum[mode],
-                        kn_act=kn_act_buffer.type(DTYPE),
+                        kn_act=kn_act_buffer,
                         layer=l,
                         unique_id=unique_id[mode],
                         token_ids=tokens_ids[mode],
                         tokens_count=tokens_count[mode],
                         old_token_count=old_token_count[mode],
-                        device=device,)
-                
-    return unit_tokens_accum, tokens_count       
+                        device=device,
+                        dtype=DTYPE)
+
+    for mode in unit_tokens_accum.keys():
+        tokens_count[mode] = tokens_count[mode].cpu()
+        for l in range(n_layers):
+            unit_tokens_accum[mode][l] = unit_tokens_accum[mode][l].cpu()
+
+    return unit_tokens_accum, tokens_count
