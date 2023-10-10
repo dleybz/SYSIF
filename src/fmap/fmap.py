@@ -97,8 +97,8 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
             Save an old_tokens_count, used to compute the cumulative average
             """
             unique_tokens_with_count = torch.unique(tokens_ids[mode], return_counts=True)
-            unique_id[mode] = unique_tokens_with_count[0].cpu().long() # set of unique tokens in the input (resp. output)
-            count_id = unique_tokens_with_count[1].cpu() # corresponding count for each unique token
+            unique_id[mode] = unique_tokens_with_count[0].long() # set of unique tokens in the input (resp. output)
+            count_id = unique_tokens_with_count[1] # corresponding count for each unique token
             old_token_count[mode] = tokens_count[mode].clone().detach() # save old count
             tokens_count[mode][unique_id[mode]] += count_id # update new count
 

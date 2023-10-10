@@ -51,6 +51,8 @@ if __name__ == "__main__":
                  device=args.device,
                  mode=mode, 
                  fp16=args.fp16)
+    unit_tokens_accum = unit_tokens_accum.cpu()
+    tokens_count = tokens_count.cpu()
     
     # safety check
     warning_flag = ''
