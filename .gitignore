@@ -156,3 +156,4 @@ cython_debug/
 unit-token-wiki/
 .vscode/
 docker/images
+*.pyc 
