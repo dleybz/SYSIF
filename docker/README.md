@@ -9,7 +9,10 @@ It will open a new windows. Open the '/sysif' folder and launch the debugger.
 
 # HPC cluster + singluarity
 
-Load the image from the registry
+Load the image from the registry (require to be in interactive mode)
 > singularity pull --docker-login docker://registry.sb.upf.edu/colt/sysif:0.2
 > mkdir SYSIF/docker/images
 > mv sysif_0.2.sif SYSIF/docker/images
+
+When you are in interactive mode, open the image using:
+> singularity run --nv docker/images/sysif_0.2.sif
