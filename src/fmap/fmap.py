@@ -34,11 +34,11 @@ def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_c
     Line i correspond to the accumulated kn features obtained when token i is the input.
     """
     batch_unit_token_cum = torch.matmul(index_mask.to(device), kn_act[layer].to(device).view(kn_d1*kn_d2, kn_d3).type(dtype))
-    # check nan and inf
-    if batch_unit_token_cum.isnan().any():
-        logging.warning('[accumulated kn] nan detected!')
-    if batch_unit_token_cum.isinf().any():
-        logging.warning('[accumulated kn] inf detected!')   
+    # # check nan and inf
+    # if batch_unit_token_cum.isnan().any():
+    #     logging.warning('[accumulated kn] nan detected!')
+    # if batch_unit_token_cum.isinf().any():
+    #     logging.warning('[accumulated kn] inf detected!')   
         
     # update the cumuluative average
     unit_tokens[layer][unique_id] = cumulative_average(
@@ -52,16 +52,24 @@ def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_c
     return unit_tokens
 
 def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'):
-    new_item = new_item.to(device)
-    new_count = new_count.to(device)
-    old_count = old_count.to(device)
-    old_average = old_average.to(device)
+    datatype = old_average.dtype
+    new_item = new_item.to(device).type(torch.float32)
+    new_count = new_count.to(device).type(torch.float32)
+    old_count = old_count.to(device).type(torch.float32)
+    old_average = old_average.to(device).type(torch.float32)
+    old_sum = old_count * old_average # float32, to avoid overflow
     cum_avg = (new_item + (old_count) * old_average) / (new_count)
     # check nan and inf
     if cum_avg.isnan().any():
-        logging.warning('[cumluative average] nan detected!')
+        logging.warning('[cumulative average f32] nan detected!')
     if cum_avg.isinf().any():
-        logging.warning('[cumluative average] inf detected!')    
+        logging.warning('[cumulative average f32] inf detected!')    
+    cum_avg = cum_avg.type(datatype)
+    # check nan and inf
+    if cum_avg.isnan().any():
+        logging.warning('[cumulative average after cast] nan detected!')
+    if cum_avg.isinf().any():
+        logging.warning('[cumulative average after cast] inf detected!')    
     return cum_avg
 
 def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, window_stride, device, mode=['input', 'output'], fp16=True):
