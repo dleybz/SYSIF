@@ -34,11 +34,11 @@ def update_token_unit(unit_tokens, kn_act, layer, unique_id, token_ids, tokens_c
     Line i correspond to the accumulated kn features obtained when token i is the input.
     """
     batch_unit_token_cum = torch.matmul(index_mask.to(device), kn_act[layer].to(device).view(kn_d1*kn_d2, kn_d3).type(dtype))
-    # # check nan and inf
-    # if batch_unit_token_cum.isnan().any():
-    #     logging.warning('[accumulated kn] nan detected!')
-    # if batch_unit_token_cum.isinf().any():
-    #     logging.warning('[accumulated kn] inf detected!')   
+    # check nan and inf
+    if batch_unit_token_cum.isnan().any():
+        logging.warning('[accumulated kn] nan detected!')
+    if batch_unit_token_cum.isinf().any():
+        logging.warning('[accumulated kn] inf detected!')   
         
     # update the cumuluative average
     unit_tokens[layer][unique_id] = cumulative_average(
@@ -138,9 +138,14 @@ def extract_fmap(model: CausalLanguageModel, dataset, batch_size, window_size, w
                         device=device,
                         dtype=DTYPE)
 
-    for mode in unit_tokens_accum.keys():
+    for mode in unit_tokens_accum.keys():  
         tokens_count[mode] = tokens_count[mode].cpu()
         for l in range(n_layers):
+            # check nan and inf
+            if unit_tokens_accum[mode][l].isnan().any():
+                logging.warning(f'[Finished][{mode}][{l}] nan detected!')
+            if unit_tokens_accum[mode][l].isinf().any():
+                logging.warning(f'[Finished][{mode}][{l}] inf detected!')  
             unit_tokens_accum[mode][l] = unit_tokens_accum[mode][l].cpu()
 
     return unit_tokens_accum, tokens_count
