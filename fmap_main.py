@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('--window_stride', type=int, default=15)
     parser.add_argument('--device', type=str, default='cuda', help='Which computation device: cuda or mps')
     parser.add_argument('--output_dir', type=str, default='./unit-token-analyze', help='the output directory to store prediction results')
+    parser.add_argument('--pos', action='store_true', help='Include token position in the fmap')
     parser.add_argument('--fp16', action='store_true', help='use half precision')
     args = parser.parse_args()
     print(args)
@@ -41,37 +42,25 @@ if __name__ == "__main__":
     model_name = args.model_name
     model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
 
-    mode = ['input', 'output']
+    mode = ['input',]# 'output']
 
     fmapper = LMfmap(model=model,
                      device=args.device,
                      mode=mode,
                      fp16=args.fp16)
     
-    fmap, tokens_count = fmapper.extract(
+    if args.pos:
+        fmapper.add_position(args.window_size)
+
+    fmap, tokens_count, n_sentences = fmapper.extract(
                  dataset=dataset,
                  batch_size=args.batch_size,
                  window_size=args.window_size,
                  window_stride=args.window_stride)
     
     # safety check
-    warning_flag = ''
-    if 'input' in mode and 'output' in mode:
-        try:
-            input_token_sum = tokens_count['input'].sum(0)
-            output_token_sum = tokens_count['output'].sum(0)
-            assert input_token_sum == output_token_sum
-        except AssertionError:
-            logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
-            warning_flag += 'wTkn'
-        try:
-            total_input = (fmap['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
-            total_output = (fmap['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
-            assert abs(total_input - total_output) < 1
-        except AssertionError:
-            logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
-            warning_flag += 'wAct'
-    
+    warning_flag = fmapper.sanity_check(n_sentences)
+
     # Save with pickle
     print('Saving stats...')
     exp_name = f'{args.model_name.split("/")[-1]}-N{args.n_samples}-{random_seed}'

@@ -53,16 +53,29 @@ class LMfmap:
         self.tokens_count = {
             'input':torch.zeros(size=(vocab_size,)).int().to(self.device), 
             'output':torch.zeros(size=(vocab_size,)).int().to(self.device)}
+    
+    def reset_fmap(self) -> None:
+        # fmap
+        self.fmap = None
+        self.tokens_count = None
+        # prepare fmap
+        self.prepare_fmap()
+        for special in self.special_tracking:
+            if special == 'position':
+                logging.warning(f'[FMAP] You also have to call add_position(window_size) again!')
         
     def add_position(self, window_size) -> None:
         logging.warning(f'[FMAP] Adding position tracking. Make sure that the window size is {window_size} during the fmap extraction.')
-        fmap_pos_dim = (window_size, self.n_units)
+        fmap_pos_dim = (window_size+1, self.n_units) # window_size +1, because we also count the last next token predicted by the LM
         for mode in self.fmap:
-            for l in range(self.fmap[mode]):
+            for l in range(len(self.fmap[mode])):#layers
                 fmap_pos = torch.full(size=fmap_pos_dim, fill_value=0.0, dtype=self.dtype)
                 # Concat original fmap and fmap_pos
                 self.fmap[mode][l] = torch.cat((self.fmap[mode][l], fmap_pos), dim=0)
-        self.special_tracking.add('position')
+            self.tokens_count[mode] = torch.cat((self.tokens_count[mode], torch.zeros(size=(window_size+1,)).int().to(self.device)))
+        self.position_offset = len(self.vocab_list) # use an offset to differenciate token id from token position
+                                                    # position i will be refered using the id: i+offset
+        if 'position' not in self.special_tracking: self.special_tracking.append('position')
 
 
     def update_token_unit(self, unit_tokens, kn_act, layer, unique_id, token_ids, tokens_count, old_token_count):
@@ -114,10 +127,12 @@ class LMfmap:
         
         # preprocess dataset
         dataset_sliced_batched, n_batch = tokenize_slice_batch(dataset, self.model.tokenizer, batch_size, window_size, window_stride)
+        n_sentences = 0
 
         # iterate on the dataset
         for input_ids, attention_mask in tqdm(dataset_sliced_batched, total=n_batch):
             d_batch, d_sent = input_ids.shape
+            n_sentences += len(input_ids)
             
             # forward pass
             output = self.model.forward_pass_nograd((input_ids, attention_mask), tokenize=False)
@@ -131,31 +146,52 @@ class LMfmap:
             unique_id = {}
             old_token_count = {}
 
+            # get activations
+            activations = self.kn_act_buffer
+
             for mode in self.fmap.keys():
                 """
                 Detect the unique tokens_id in the input sequence, and count them.
                 Update the total tokens_count.
                 Save an old_tokens_count, used to compute the cumulative average
                 """
-                unique_tokens_with_count = torch.unique(tokens_ids[mode], return_counts=True)
-                unique_id[mode] = unique_tokens_with_count[0].long() # set of unique tokens in the input (resp. output)
-                count_id = unique_tokens_with_count[1] # corresponding count for each unique token
-                old_token_count[mode] = self.tokens_count[mode].clone().detach() # save old count
-                self.tokens_count[mode][unique_id[mode]] += count_id # update new count
+                
+                ids = tokens_ids[mode] # list of ids that we will be used to update the fmap
+                                       # corresponds to the token id + the various additional attributes that are tracked
 
-            # for each layer accumulate the unit-token association
-            for l in range(self.n_layers):
-                # per token stats
-                for mode in self.fmap.keys():
+                for special in self.special_tracking:
+                    if special == 'position':
+                        """
+                        The token position to the list of ids
+                        """
+                        if mode == 'input':
+                            position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset
+                        elif mode == 'output': # same as input, but +1 because LM output the next token
+                            position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset + 1
+                        ids = torch.cat((ids, position_id.flatten()), dim=0) # add the position id to the token_id
+                        # we also have to duplicate the activation matrix
+                        for l in range(self.n_layers):
+                            activations[l] = torch.cat((activations[l], activations[l]), dim=0)
+
+                unique_tokens_with_count = torch.unique(ids, return_counts=True)
+                unique_id = unique_tokens_with_count[0].long() # set of unique tokens in the input (resp. output)
+                count_id = unique_tokens_with_count[1] # corresponding count for each unique token
+
+                old_token_count = self.tokens_count[mode].clone().detach() # save old count
+                self.tokens_count[mode][unique_id] += count_id # update new count                       
+
+                # for each layer accumulate the unit-token association
+                for l in range(self.n_layers):
+                    # per token stats
                     with torch.no_grad():
                         self.fmap[mode] = self.update_token_unit(
                             unit_tokens=self.fmap[mode],
                             kn_act=self.kn_act_buffer,
                             layer=l,
-                            unique_id=unique_id[mode],
-                            token_ids=tokens_ids[mode],
+                            unique_id=unique_id,
+                            token_ids=ids,
                             tokens_count=self.tokens_count[mode],
-                            old_token_count=old_token_count[mode],)
+                            old_token_count=old_token_count,)
 
         for mode in self.fmap.keys():  
             self.tokens_count[mode] = self.tokens_count[mode].cpu()
@@ -167,7 +203,34 @@ class LMfmap:
                     logging.warning(f'[Finished][{mode}][{l}] inf detected!')  
                 self.fmap[mode][l] = self.fmap[mode][l].cpu()
 
-        return self.fmap, self.tokens_count
+        return self.fmap, self.tokens_count, n_sentences
+    
+    def sanity_check(self, n_sentences):
+        warning_flag = ''
+        if 'input' in self.mode and 'output' in self.mode:
+            try:
+                input_token_sum = self.tokens_count['input'].sum(0)
+                output_token_sum = self.tokens_count['output'].sum(0)
+                assert input_token_sum == output_token_sum
+            except AssertionError:
+                logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
+                warning_flag += 'wTkn'
+            try:
+                total_input = (self.fmap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
+                total_output = (self.fmap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
+                assert abs(total_input - total_output) < 1
+            except AssertionError:
+                logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
+                warning_flag += 'wAct'
+        if 'position' in self.special_tracking:
+            # check that position 0 is counted n_sample times
+            try:
+                position_count = self.tokens_count['input'][0+self.position_offset]
+                assert position_count == n_sentences
+            except AssertionError:
+                logging.warning(f'Position 0 count is not correct! Position 0 count:{position_count}. Number of sentences:{n_sentences}')
+                warning_flag += 'wPos'
+        return warning_flag
 
 def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'):
     datatype = old_average.dtype
