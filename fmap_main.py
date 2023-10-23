@@ -5,7 +5,7 @@ import logging
 import argparse
 import random
 
-from src.fmap.fmap import extract_fmap
+from src.fmap.fmap import LMfmap
 from src.data.dataset_loader import load_hf_dataset_with_sampling
 from src.model.causal_lm import CausalLanguageModel
 from src.utils.init_utils import init_device, init_random_seed
@@ -43,14 +43,16 @@ if __name__ == "__main__":
 
     mode = ['input', 'output']
 
-    unit_tokens_accum, tokens_count = extract_fmap(model=model, 
+    fmapper = LMfmap(model=model,
+                     device=args.device,
+                     mode=mode,
+                     fp16=args.fp16)
+    
+    fmap, tokens_count = fmapper.extract(
                  dataset=dataset,
                  batch_size=args.batch_size,
                  window_size=args.window_size,
-                 window_stride=args.window_stride,
-                 device=args.device,
-                 mode=mode, 
-                 fp16=args.fp16)
+                 window_stride=args.window_stride)
     
     # safety check
     warning_flag = ''
@@ -63,8 +65,8 @@ if __name__ == "__main__":
             logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
             warning_flag += 'wTkn'
         try:
-            total_input = (unit_tokens_accum['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
-            total_output = (unit_tokens_accum['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
+            total_input = (fmap['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
+            total_output = (fmap['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
             assert abs(total_input - total_output) < 1
         except AssertionError:
             logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
@@ -82,7 +84,7 @@ if __name__ == "__main__":
     with open(os.path.join(save_dir, f'tokens-count-{exp_name}.pickle'), 'wb') as handle:
         pickle.dump(tokens_count, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open(os.path.join(save_dir,f'unit_tokens_accum-{exp_name}.pickle'), 'wb') as handle:
-        pickle.dump(unit_tokens_accum, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(os.path.join(save_dir,f'fmap-{exp_name}.pickle'), 'wb') as handle:
+        pickle.dump(fmap, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Done!')
