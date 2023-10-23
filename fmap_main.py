@@ -63,8 +63,8 @@ if __name__ == "__main__":
             logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
             warning_flag += 'wTkn'
         try:
-            total_input = (unit_tokens_accum['output'][0] * tokens_count['output'].unsqueeze(-1)).sum()
-            total_output = (unit_tokens_accum['output'][0] * tokens_count['output'].unsqueeze(-1)).sum()
+            total_input = (unit_tokens_accum['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
+            total_output = (unit_tokens_accum['output'][0].float() * tokens_count['output'].unsqueeze(-1).float()).sum()
             assert abs(total_input - total_output) < 1
         except AssertionError:
             logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
