@@ -42,7 +42,7 @@ if __name__ == "__main__":
     model_name = args.model_name
     model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
 
-    mode = ['input',]# 'output']
+    mode = ['input', 'output']
 
     fmapper = LMfmap(model=model,
                      device=args.device,
@@ -64,6 +64,8 @@ if __name__ == "__main__":
     # Save with pickle
     print('Saving stats...')
     exp_name = f'{args.model_name.split("/")[-1]}-N{args.n_samples}-{random_seed}'
+    if args.pos:
+        exp_name += '_position'
     exp_name += '_'+warning_flag
     save_dir = os.path.join(args.output_dir,f'unit-token-wiki.{random_seed}')
 
