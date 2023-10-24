@@ -157,3 +157,4 @@ unit-token-wiki/
 .vscode/
 docker/images
 *.pyc 
+*.pickle
