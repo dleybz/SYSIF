@@ -168,7 +168,7 @@ class LMamap:
                             position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset
                         elif mode == 'output': # same as input, but +1 because LM output the next token
                             position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset + 1
-                        ids = torch.cat((ids, position_id.flatten()), dim=0) # add the position id to the token_id
+                        ids = torch.cat((ids, position_id.to(ids.device).flatten()), dim=0) # add the position id to the token_id
                         # we also have to duplicate the activation matrix
                         for l in range(self.n_layers):
                             activations[l] = torch.cat((activations[l], activations[l]), dim=0)
