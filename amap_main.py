@@ -5,7 +5,7 @@ import logging
 import argparse
 import random
 
-from src.fmap.fmap import LMfmap
+from src.amap.amap import LMamap
 from src.data.dataset_loader import load_hf_dataset_with_sampling
 from src.model.causal_lm import CausalLanguageModel
 from src.utils.init_utils import init_device, init_random_seed
@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('--window_stride', type=int, default=15)
     parser.add_argument('--device', type=str, default='cuda', help='Which computation device: cuda or mps')
     parser.add_argument('--output_dir', type=str, default='./unit-token-analyze', help='the output directory to store prediction results')
-    parser.add_argument('--pos', action='store_true', help='Include token position in the fmap')
+    parser.add_argument('--pos', action='store_true', help='Include token position in the amap')
     parser.add_argument('--fp16', action='store_true', help='use half precision')
     args = parser.parse_args()
     print(args)
@@ -42,24 +42,24 @@ if __name__ == "__main__":
     model_name = args.model_name
     model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
 
-    mode = ['input', 'output']
+    mode = ['input',]# 'output']
 
-    fmapper = LMfmap(model=model,
+    amapper = LMamap(model=model,
                      device=args.device,
                      mode=mode,
                      fp16=args.fp16)
     
     if args.pos:
-        fmapper.add_position(args.window_size)
+        amapper.add_position(args.window_size)
 
-    fmap, tokens_count, n_sentences = fmapper.extract(
+    amap, tokens_count, n_sentences = amapper.extract(
                  dataset=dataset,
                  batch_size=args.batch_size,
                  window_size=args.window_size,
                  window_stride=args.window_stride)
     
     # safety check
-    warning_flag = fmapper.sanity_check(n_sentences)
+    warning_flag = amapper.sanity_check(n_sentences)
 
     # Save with pickle
     print('Saving stats...')
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     with open(os.path.join(save_dir, f'tokens-count-{exp_name}.pickle'), 'wb') as handle:
         pickle.dump(tokens_count, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open(os.path.join(save_dir,f'fmap-{exp_name}.pickle'), 'wb') as handle:
-        pickle.dump(fmap, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(os.path.join(save_dir,f'amap-{exp_name}.pickle'), 'wb') as handle:
+        pickle.dump(amap, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Done!')

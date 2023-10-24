@@ -8,10 +8,10 @@ from src.data.dataset_loader import tokenize_slice_batch, load_hf_dataset_with_s
 
 from tqdm import tqdm
 
-class LMfmap:
+class LMamap:
     def __init__(self, model: CausalLanguageModel, mode=['input', 'output'], device='cuda', fp16=True) -> None:
-        # fmap
-        self.fmap = None
+        # amap
+        self.amap = None
         self.tokens_count = None
 
         # options
@@ -29,49 +29,49 @@ class LMfmap:
         self.device = device
         self.dtype = torch.float16 if fp16 else torch.float32
 
-        # prepare fmap
-        self.prepare_fmap()
+        # prepare amap
+        self.prepare_amap()
 
-    def prepare_fmap(self) -> None:
+    def prepare_amap(self) -> None:
         """
-        Prepare the fmap
+        Prepare the amap
         """
 
-        self.fmap = {}
+        self.amap = {}
         vocab_size = len(self.vocab_list) 
-        fmap_dim = (vocab_size, self.n_units)
+        amap_dim = (vocab_size, self.n_units)
         
         # init token/unit matrix
         '''
-        fmap['input'][l][i][j]
+        amap['input'][l][i][j]
         provides the accumulated activation of knowledge neuron j when vocab item i is the last token of the input
         '''
         if 'input' in self.mode:
-            self.fmap['input'] = [torch.full(size=fmap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
+            self.amap['input'] = [torch.full(size=amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
         if 'output' in self.mode:
-            self.fmap['output'] = [torch.full(size=fmap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
+            self.amap['output'] = [torch.full(size=amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
         self.tokens_count = {
             'input':torch.zeros(size=(vocab_size,)).int().to(self.device), 
             'output':torch.zeros(size=(vocab_size,)).int().to(self.device)}
     
-    def reset_fmap(self) -> None:
-        # fmap
-        self.fmap = None
+    def reset_amap(self) -> None:
+        # amap
+        self.amap = None
         self.tokens_count = None
-        # prepare fmap
-        self.prepare_fmap()
+        # prepare amap
+        self.prepare_amap()
         for special in self.special_tracking:
             if special == 'position':
-                logging.warning(f'[FMAP] You also have to call add_position(window_size) again!')
+                logging.warning(f'[amap] You also have to call add_position(window_size) again!')
         
     def add_position(self, window_size) -> None:
-        logging.warning(f'[FMAP] Adding position tracking. Make sure that the window size is {window_size} during the fmap extraction.')
-        fmap_pos_dim = (window_size+1, self.n_units) # window_size +1, because we also count the last next token predicted by the LM
-        for mode in self.fmap:
-            for l in range(len(self.fmap[mode])):#layers
-                fmap_pos = torch.full(size=fmap_pos_dim, fill_value=0.0, dtype=self.dtype)
-                # Concat original fmap and fmap_pos
-                self.fmap[mode][l] = torch.cat((self.fmap[mode][l], fmap_pos), dim=0)
+        logging.warning(f'[amap] Adding position tracking. Make sure that the window size is {window_size} during the amap extraction.')
+        amap_pos_dim = (window_size+1, self.n_units) # window_size +1, because we also count the last next token predicted by the LM
+        for mode in self.amap:
+            for l in range(len(self.amap[mode])):#layers
+                amap_pos = torch.full(size=amap_pos_dim, fill_value=0.0, dtype=self.dtype)
+                # Concat original amap and amap_pos
+                self.amap[mode][l] = torch.cat((self.amap[mode][l], amap_pos), dim=0)
             self.tokens_count[mode] = torch.cat((self.tokens_count[mode], torch.zeros(size=(window_size+1,)).int().to(self.device)))
         self.position_offset = len(self.vocab_list) # use an offset to differenciate token id from token position
                                                     # position i will be refered using the id: i+offset
@@ -149,14 +149,14 @@ class LMfmap:
             # get activations
             activations = self.kn_act_buffer
 
-            for mode in self.fmap.keys():
+            for mode in self.amap.keys():
                 """
                 Detect the unique tokens_id in the input sequence, and count them.
                 Update the total tokens_count.
                 Save an old_tokens_count, used to compute the cumulative average
                 """
                 
-                ids = tokens_ids[mode] # list of ids that we will be used to update the fmap
+                ids = tokens_ids[mode] # list of ids that we will be used to update the amap
                                        # corresponds to the token id + the various additional attributes that are tracked
 
                 for special in self.special_tracking:
@@ -184,8 +184,8 @@ class LMfmap:
                 for l in range(self.n_layers):
                     # per token stats
                     with torch.no_grad():
-                        self.fmap[mode] = self.update_token_unit(
-                            unit_tokens=self.fmap[mode],
+                        self.amap[mode] = self.update_token_unit(
+                            unit_tokens=self.amap[mode],
                             kn_act=self.kn_act_buffer,
                             layer=l,
                             unique_id=unique_id,
@@ -193,17 +193,17 @@ class LMfmap:
                             tokens_count=self.tokens_count[mode],
                             old_token_count=old_token_count,)
 
-        for mode in self.fmap.keys():  
+        for mode in self.amap.keys():  
             self.tokens_count[mode] = self.tokens_count[mode].cpu()
             for l in range(self.n_layers):
                 # check nan and inf
-                if self.fmap[mode][l].isnan().any():
+                if self.amap[mode][l].isnan().any():
                     logging.warning(f'[Finished][{mode}][{l}] nan detected!')
-                if self.fmap[mode][l].isinf().any():
+                if self.amap[mode][l].isinf().any():
                     logging.warning(f'[Finished][{mode}][{l}] inf detected!')  
-                self.fmap[mode][l] = self.fmap[mode][l].cpu()
+                self.amap[mode][l] = self.amap[mode][l].cpu()
 
-        return self.fmap, self.tokens_count, n_sentences
+        return self.amap, self.tokens_count, n_sentences
     
     def sanity_check(self, n_sentences):
         warning_flag = ''
@@ -216,8 +216,8 @@ class LMfmap:
                 logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
                 warning_flag += 'wTkn'
             try:
-                total_input = (self.fmap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
-                total_output = (self.fmap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
+                total_input = (self.amap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
+                total_output = (self.amap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
                 assert abs(total_input - total_output) < 1
             except AssertionError:
                 logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
