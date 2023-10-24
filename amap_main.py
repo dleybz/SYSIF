@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument('--window_size', type=int, default=15)
     parser.add_argument('--window_stride', type=int, default=15)
     parser.add_argument('--device', type=str, default='cuda', help='Which computation device: cuda or mps')
-    parser.add_argument('--output_dir', type=str, default='./unit-token-analyze', help='the output directory to store prediction results')
+    parser.add_argument('--output_dir', type=str, default='./amap', help='the output directory to store prediction results')
     parser.add_argument('--pos', action='store_true', help='Include token position in the amap')
     parser.add_argument('--fp16', action='store_true', help='use half precision')
     args = parser.parse_args()
