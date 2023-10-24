@@ -11,7 +11,7 @@ from src.model.causal_lm import CausalLanguageModel
 from src.utils.init_utils import init_device, init_random_seed
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='OPTCorpus generation')
+    parser = argparse.ArgumentParser(description='AMAP')
 
     # Data selection
     parser.add_argument('--model_name', type=str, default="EleutherAI/pythia-70m-deduped")
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     model_name = args.model_name
     model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
 
-    mode = ['input',]# 'output']
+    mode = ['input', 'output']
 
     amapper = LMamap(model=model,
                      device=args.device,
