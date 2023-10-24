@@ -39,19 +39,26 @@ def slice_tokenized_datum(tokenized_datum, window_size, window_stride):
     slices = [tokenized_datum[t:t+window_size] for t in range(start_offset,datum_length-window_size,window_stride)]
     return slices
 
-def batchify(datalist, batch_size):
+def batchify(datalist, batch_size, drop_last):
     batches = [datalist[i:i+batch_size] for i in range(0,len(datalist),batch_size)]
+
+    # drop last to avoid different batch size
+    if drop_last:
+        if not len(batches[-1]) == batch_size:
+            batches = batches[:-1]
+
     # to pytorch
     batches = [torch.tensor(batch) for batch in batches]
     attention_masks = [torch.ones_like(batch) for batch in batches]
+
     return zip(batches, attention_masks), len(batches)
 
-def tokenize_slice_batch(dataset: Dataset, tokenizer, batch_size, window_size=None, window_stride=None):
+def tokenize_slice_batch(dataset: Dataset, tokenizer, batch_size, window_size=None, window_stride=None, drop_last=False):
     # process data: tokenize/slice/batch
     dataset = dataset.map(lambda s: tokenizer(s['text']), num_proc=4) # tokenize
     dataset_sliced = [slice_tokenized_datum(datum['input_ids'], window_size, window_stride) for datum in dataset] # slice
     dataset_sliced = list(itertools.chain.from_iterable(dataset_sliced)) # flatten
-    dataset_sliced_batched, n_batch = batchify(dataset_sliced, batch_size) # batch. this is an iterator
+    dataset_sliced_batched, n_batch = batchify(dataset_sliced, batch_size, drop_last) # batch. this is an iterator
     return dataset_sliced_batched, n_batch
 
 

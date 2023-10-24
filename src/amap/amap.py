@@ -92,6 +92,7 @@ class LMamap:
         '''
         save_device = unit_tokens[layer].device
         kn_d1, kn_d2, kn_d3 = kn_act[layer].shape
+        
         # create an index mask, to only process tokens in the batch. [n_tokens_in_the_input, n_unique_tokens_in_the_input]
         expand_unique_id = unique_id.unsqueeze(0).expand(token_ids.size(0), -1)
         # in the mask, line i correspond to the location of unique token i in the input (resp. output) sequence
@@ -126,7 +127,7 @@ class LMamap:
     def extract(self, dataset: Dataset, batch_size, window_size, window_stride):
         
         # preprocess dataset
-        dataset_sliced_batched, n_batch = tokenize_slice_batch(dataset, self.model.tokenizer, batch_size, window_size, window_stride)
+        dataset_sliced_batched, n_batch = tokenize_slice_batch(dataset, self.model.tokenizer, batch_size, window_size, window_stride, drop_last=True)
         n_sentences = 0
 
         # iterate on the dataset
