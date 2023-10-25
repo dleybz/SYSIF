@@ -1,11 +1,12 @@
 import sys
 sys.path.append('../')
+import os
 import torch
 import logging
 from datasets import Dataset
 from src.model.causal_lm import CausalLanguageModel
 from src.data.dataset_loader import tokenize_slice_batch, load_hf_dataset_with_sampling
-
+import pickle
 from tqdm import tqdm
 
 class LMamap:
@@ -206,7 +207,7 @@ class LMamap:
 
         return self.amap, self.tokens_count, n_sentences
     
-    def sanity_check(self, n_sentences):
+    def sanity_check(self, n_sentences=None):
         warning_flag = ''
         if 'input' in self.mode and 'output' in self.mode:
             try:
@@ -223,7 +224,7 @@ class LMamap:
             except AssertionError:
                 logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
                 warning_flag += 'wAct'
-        if 'position' in self.special_tracking:
+        if 'position' in self.special_tracking and n_sentences is not None:
             # check that position 0 is counted n_sample times
             try:
                 position_count = self.tokens_count['input'][0+self.position_offset]
@@ -232,6 +233,30 @@ class LMamap:
                 logging.warning(f'Position 0 count is not correct! Position 0 count:{position_count}. Number of sentences:{n_sentences}')
                 warning_flag += 'wPos'
         return warning_flag
+
+    def load(self, datafolder, dataset) -> None:
+        pickle_files = [f for f in os.listdir(datafolder) if f.endswith('.pickle')]
+        model_name = self.model.name.split('/')
+        print('[AMAP] Loading files...')
+        for f in pickle_files:
+            if dataset in f and model_name in f:
+                if f.startswith('amap'):
+                    with open(f, "rb") as input_file:
+                        self.amap = pickle.load(input_file)
+                    if 'position' in f:
+                        self.special_tracking.append('position')
+                    self.mode = self.amap.keys()
+                    self.dtype = self.amap[self.mode[0]][0].dtype
+                    print(f'[AMAP] {f} loaded!')
+                elif f.startswith('tokens-count'):
+                    with open(f, "rb") as input_file:
+                        self.tokens_count = pickle.load(input_file)
+                    print(f'[AMAP] {f} loaded!')
+        print('[AMAP] Sanity check')
+        warn = self.sanity_check()
+        if warn != '': logging.warning(f'The loaded files contain errors: {warn}')
+        print('[AMAP] Done :-)')
+
 
 def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'):
     datatype = old_average.dtype

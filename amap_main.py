@@ -25,6 +25,10 @@ def parse_args():
     parser.add_argument('--output_dir', type=str, default='./amap', help='the output directory to store prediction results')
     parser.add_argument('--pos', action='store_true', help='Include token position in the amap')
     parser.add_argument('--fp16', action='store_true', help='use half precision')
+    parser.add_argument('--extract', action='store_true', help='Run amap extraction')
+    parser.add_argument('--load', type=str, default='', help='Load the amap in the provided folder')
+
+
     args = parser.parse_args()
     print(args)
 
@@ -48,34 +52,42 @@ if __name__ == "__main__":
                      device=args.device,
                      mode=mode,
                      fp16=args.fp16)
-    
-    if args.pos:
-        amapper.add_position(args.window_size)
 
-    amap, tokens_count, n_sentences = amapper.extract(
-                 dataset=dataset,
-                 batch_size=args.batch_size,
-                 window_size=args.window_size,
-                 window_stride=args.window_stride)
-    
-    # safety check
-    warning_flag = amapper.sanity_check(n_sentences)
+    if args.load != '':
+        print('[AMAP] Loading an existing amap...')
+        amapper.load(args.load, args.dataset)
 
-    # Save with pickle
-    print('Saving stats...')
-    exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset}-N{args.n_samples}-{random_seed}'
-    if args.pos:
-        exp_name += '_position'
-    exp_name += '_'+warning_flag
-    save_dir = os.path.join(args.output_dir,f'amap.{random_seed}')
+    elif args.extract:
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+        print('[AMAP] Starting extraction.')
 
-    with open(os.path.join(save_dir, f'tokens-count-{exp_name}.pickle'), 'wb') as handle:
-        pickle.dump(tokens_count, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if args.pos:
+            amapper.add_position(args.window_size)
 
-    with open(os.path.join(save_dir,f'amap-{exp_name}.pickle'), 'wb') as handle:
-        pickle.dump(amap, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        amap, tokens_count, n_sentences = amapper.extract(
+                    dataset=dataset,
+                    batch_size=args.batch_size,
+                    window_size=args.window_size,
+                    window_stride=args.window_stride)
+        
+        # safety check
+        warning_flag = amapper.sanity_check(n_sentences)
 
-    print('Done!')
+        # Save with pickle
+        print('Saving stats...')
+        exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset}-N{args.n_samples}-{random_seed}'
+        if args.pos:
+            exp_name += '_position'
+        exp_name += '_'+warning_flag
+        save_dir = os.path.join(args.output_dir,f'amap.{random_seed}')
+
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+        with open(os.path.join(save_dir, f'tokens-count-{exp_name}.pickle'), 'wb') as handle:
+            pickle.dump(tokens_count, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        with open(os.path.join(save_dir,f'amap-{exp_name}.pickle'), 'wb') as handle:
+            pickle.dump(amap, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        print('Done!')
