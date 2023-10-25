@@ -148,9 +148,6 @@ class LMamap:
             unique_id = {}
             old_token_count = {}
 
-            # get activations
-            activations = self.kn_act_buffer
-
             for mode in self.amap.keys():
                 """
                 Detect the unique tokens_id in the input sequence, and count them.
@@ -160,6 +157,9 @@ class LMamap:
                 
                 ids = tokens_ids[mode] # list of ids that we will be used to update the amap
                                        # corresponds to the token id + the various additional attributes that are tracked
+
+                # get activations
+                activations = [self.kn_act_buffer[l].detach().clone() for l in range(self.n_layers)] # updated after each forward pass
 
                 for special in self.special_tracking:
                     if special == 'position':
@@ -188,7 +188,7 @@ class LMamap:
                     with torch.no_grad():
                         self.amap[mode] = self.update_token_unit(
                             unit_tokens=self.amap[mode],
-                            kn_act=self.kn_act_buffer,
+                            kn_act=activations,
                             layer=l,
                             unique_id=unique_id,
                             token_ids=ids,
