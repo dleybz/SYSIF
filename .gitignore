@@ -158,3 +158,4 @@ unit-token-wiki/
 docker/images
 *.pyc 
 *.pickle
+data/
