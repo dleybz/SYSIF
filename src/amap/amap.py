@@ -93,11 +93,10 @@ class LMamap:
         '''
         save_device = unit_tokens[layer].device
         kn_d1, kn_d2, kn_d3 = kn_act[layer].shape
-        
         # create an index mask, to only process tokens in the batch. [n_tokens_in_the_input, n_unique_tokens_in_the_input]
         expand_unique_id = unique_id.unsqueeze(0).expand(token_ids.size(0), -1)
         # in the mask, line i correspond to the location of unique token i in the input (resp. output) sequence
-        index_mask = (expand_unique_id == token_ids.unsqueeze(-1)).t().type(self.dtype) 
+        index_mask = (expand_unique_id == token_ids.unsqueeze(-1)).t()
         # compute the unit-token activations for the batch, on the device
         """
         index_mask: [n_uniques_in_sequence, n_tokens_in_sequence]. Line i has 1 where token i appear in the sequence
@@ -106,7 +105,11 @@ class LMamap:
         batch_unit_token_cum: index_mask x kn_act[layer] = [n_uniques_in_sequence, n_feats].
         Line i correspond to the accumulated kn features obtained when token i is the input.
         """
-        batch_unit_token_cum = torch.matmul(index_mask.to(self.device), kn_act[layer].to(self.device).view(kn_d1*kn_d2, kn_d3).type(self.dtype))
+        # send to correct device, dtype and shape
+        m1 = index_mask.to(self.device).type(self.dtype)
+        m2 = kn_act[layer].view(kn_d1*kn_d2, kn_d3).contiguous().to(self.device).type(self.dtype)
+        batch_unit_token_cum = torch.matmul(m1, m2)
+        
         # check nan and inf
         # if batch_unit_token_cum.isnan().any():
         #     logging.warning('[accumulated kn] nan detected!')
@@ -141,15 +144,12 @@ class LMamap:
             
             # accumulate input and output token ids
             tokens_ids = {
-                'input': input_ids.flatten().to(self.device).type(self.dtype),
-                'output': torch.argmax(output.logits.detach(), dim=-1).flatten().to(self.device).type(self.dtype)
+                'input': input_ids.flatten().to(self.device).type(torch.int),
+                'output': torch.argmax(output.logits.detach(), dim=-1).flatten().to(self.device).type(torch.int)
             }
             # count unique tokens
             unique_id = {}
             old_token_count = {}
-
-            # get activations
-            activations = self.kn_act_buffer
 
             for mode in self.amap.keys():
                 """
@@ -161,6 +161,8 @@ class LMamap:
                 ids = tokens_ids[mode] # list of ids that we will be used to update the amap
                                        # corresponds to the token id + the various additional attributes that are tracked
 
+                # get activations
+                activations = [self.kn_act_buffer[l].detach().clone() for l in range(self.n_layers)] # updated after each forward pass
                 for special in self.special_tracking:
                     if special == 'position':
                         """
@@ -170,25 +172,22 @@ class LMamap:
                             position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset
                         elif mode == 'output': # same as input, but +1 because LM output the next token
                             position_id = torch.arange(window_size).unsqueeze(0).expand((batch_size, -1)) + self.position_offset + 1
-                        ids = torch.cat((ids, position_id.to(ids.device).flatten()), dim=0) # add the position id to the token_id
+                        ids = torch.cat((ids, position_id.to(ids.device).type(ids.dtype).flatten()), dim=0) # add the position id to the token_id
                         # we also have to duplicate the activation matrix
                         for l in range(self.n_layers):
                             activations[l] = torch.cat((activations[l], activations[l]), dim=0)
-
                 unique_tokens_with_count = torch.unique(ids, return_counts=True)
                 unique_id = unique_tokens_with_count[0].long() # set of unique tokens in the input (resp. output)
                 count_id = unique_tokens_with_count[1] # corresponding count for each unique token
-
                 old_token_count = self.tokens_count[mode].clone().detach() # save old count
                 self.tokens_count[mode][unique_id] += count_id # update new count                       
-
                 # for each layer accumulate the unit-token association
                 for l in range(self.n_layers):
                     # per token stats
                     with torch.no_grad():
                         self.amap[mode] = self.update_token_unit(
                             unit_tokens=self.amap[mode],
-                            kn_act=self.kn_act_buffer,
+                            kn_act=activations,
                             layer=l,
                             unique_id=unique_id,
                             token_ids=ids,
