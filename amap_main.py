@@ -41,8 +41,6 @@ if __name__ == "__main__":
     random_seed = init_random_seed(args.seed)
     init_device(args.device)
 
-    dataset = load_hf_dataset_with_sampling(args.dataset, n_samples=args.n_samples)
-
     model_name = args.model_name
     model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
 
@@ -56,6 +54,16 @@ if __name__ == "__main__":
     if args.load != '':
         print('[AMAP] Loading an existing amap...')
         amapper.load(args.load, args.dataset)
+        """
+        amapper.amap: the actication maps (a dictionary with different modes, e.g. ['input', 'output'])
+                      each map is a list of n_layers tensors with shape (vocab_size, n_units)
+        amapper.tokens_count: tokens count (also a dictionary)
+        amapper.vocab_list: the list of tokens (the index is aligned with amaps)
+        
+        if positions are tracked (check flags in amapper.special_tracking), the position id correspond to:
+        position i = amapper.position_offset + i
+        """
+        
 
     elif args.extract:
 
@@ -63,6 +71,8 @@ if __name__ == "__main__":
 
         if args.pos:
             amapper.add_position(args.window_size)
+
+        dataset = load_hf_dataset_with_sampling(args.dataset, n_samples=args.n_samples)
 
         amap, tokens_count, n_sentences = amapper.extract(
                     dataset=dataset,

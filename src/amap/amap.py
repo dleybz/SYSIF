@@ -236,20 +236,20 @@ class LMamap:
 
     def load(self, datafolder, dataset) -> None:
         pickle_files = [f for f in os.listdir(datafolder) if f.endswith('.pickle')]
-        model_name = self.model.name.split('/')
+        model_name = self.model.model_name.split('/')[-1]
         print('[AMAP] Loading files...')
         for f in pickle_files:
             if dataset in f and model_name in f:
                 if f.startswith('amap'):
-                    with open(f, "rb") as input_file:
+                    with open(os.path.join(datafolder,f), "rb") as input_file:
                         self.amap = pickle.load(input_file)
                     if 'position' in f:
                         self.special_tracking.append('position')
-                    self.mode = self.amap.keys()
+                    self.mode = list(self.amap.keys())
                     self.dtype = self.amap[self.mode[0]][0].dtype
                     print(f'[AMAP] {f} loaded!')
                 elif f.startswith('tokens-count'):
-                    with open(f, "rb") as input_file:
+                    with open(os.path.join(datafolder,f), "rb") as input_file:
                         self.tokens_count = pickle.load(input_file)
                     print(f'[AMAP] {f} loaded!')
         print('[AMAP] Sanity check')
