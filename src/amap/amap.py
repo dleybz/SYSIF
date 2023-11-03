@@ -217,7 +217,7 @@ class LMamap:
                 logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
                 warning_flag += 'wTkn'
             try:
-                total_input = (self.amap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
+                total_input = (self.amap['input'][0].float() * self.tokens_count['input'].unsqueeze(-1).float()).sum()
                 total_output = (self.amap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
                 assert abs(total_input - total_output) < 1
             except AssertionError:
