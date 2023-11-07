@@ -85,6 +85,10 @@ class CausalLanguageModel:
     
     def get_vocab(self):
         return self.tokenizer.vocab
+    
+    def get_vocab_size(self):
+        # warning: tokenizer.vocab_size only return the vocab size without taking into account the added tokens.
+        return len(self.tokenizer)
 
     def get_layers(self):
         if 'opt' in self.model_name:
