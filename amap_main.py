@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     if args.load != '':
         print('[AMAP] Loading an existing amap...')
-        amapper.load(args.load, args.dataset)
+        amapper.load(args.load, args.dataset, args.window_size)
         """
         amapper.amap: the actication maps (a dictionary with different modes, e.g. ['input', 'output'])
                       each map is a list of n_layers tensors with shape (vocab_size, n_units)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
         # Save with pickle
         print('Saving stats...')
-        exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset}-N{args.n_samples}-{random_seed}'
+        exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset}-N{args.n_samples}-Wd{args.window_size}-{random_seed}'
         if args.pos:
             exp_name += '_position'
         exp_name += '_'+warning_flag
