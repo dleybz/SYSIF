@@ -39,7 +39,7 @@ class LMamap:
         """
 
         self.amap = {}
-        vocab_size = len(self.vocab_list) 
+        vocab_size = self.model.get_vocab_size() 
         amap_dim = (vocab_size, self.n_units)
         
         # init token/unit matrix
@@ -65,17 +65,26 @@ class LMamap:
             if special == 'position':
                 logging.warning(f'[amap] You also have to call add_position(window_size) again!')
         
-    def add_position(self, window_size) -> None:
+    def add_position(self, window_size, load=False) -> None:
+        # if load=True, do not touch the amap. Only update the tokenizer and position offset.
         logging.warning(f'[amap] Adding position tracking. Make sure that the window size is {window_size} during the amap extraction.')
         amap_pos_dim = (window_size+1, self.n_units) # window_size +1, because we also count the last next token predicted by the LM
-        for mode in self.amap:
-            for l in range(len(self.amap[mode])):#layers
-                amap_pos = torch.full(size=amap_pos_dim, fill_value=0.0, dtype=self.dtype)
-                # Concat original amap and amap_pos
-                self.amap[mode][l] = torch.cat((self.amap[mode][l], amap_pos), dim=0)
-            self.tokens_count[mode] = torch.cat((self.tokens_count[mode], torch.zeros(size=(window_size+1,)).int().to(self.device)))
-        self.position_offset = len(self.vocab_list) # use an offset to differenciate token id from token position
-                                                    # position i will be refered using the id: i+offset
+        if load==False:
+            for mode in self.amap:
+                for l in range(len(self.amap[mode])):#layers
+                    amap_pos = torch.full(size=amap_pos_dim, fill_value=0.0, dtype=self.dtype)
+                    # Concat original amap and amap_pos
+                    self.amap[mode][l] = torch.cat((self.amap[mode][l], amap_pos), dim=0)
+                self.tokens_count[mode] = torch.cat((self.tokens_count[mode], torch.zeros(size=(window_size+1,)).int().to(self.device)))
+        
+        self.position_offset = self.model.get_vocab_size() # use an offset to differenciate token id from token position
+                                                           # position i will be refered using the id: i+offset
+        # add POS_i to the tokenizer
+        positional_tokens = [f"[POS_{idx}]" for idx in range(amap_pos_dim[0])]
+        # check that positional tokens do not exist in the original vocab
+        assert set(positional_tokens) - set(self.model.get_vocab()) == set(positional_tokens)
+        # do it one by one to get the correct tokens IDs (otherwise the order is random)
+        [self.model.tokenizer.add_special_tokens({'additional_special_tokens': [positional_tokens[i]]}) for i in range(amap_pos_dim[0])]
         if 'position' not in self.special_tracking: self.special_tracking.append('position')
 
 
@@ -233,7 +242,7 @@ class LMamap:
                 warning_flag += 'wPos'
         return warning_flag
 
-    def load(self, datafolder, dataset) -> None:
+    def load(self, datafolder, dataset, window_size) -> None:
         pickle_files = [f for f in os.listdir(datafolder) if f.endswith('.pickle')]
         model_name = self.model.model_name.split('/')[-1]
         print('[AMAP] Loading files...')
@@ -243,7 +252,7 @@ class LMamap:
                     with open(os.path.join(datafolder,f), "rb") as input_file:
                         self.amap = pickle.load(input_file)
                     if 'position' in f:
-                        self.special_tracking.append('position')
+                        self.add_position(window_size=window_size, load=True)
                     self.mode = list(self.amap.keys())
                     self.dtype = self.amap[self.mode[0]][0].dtype
                     print(f'[AMAP] {f} loaded!')
