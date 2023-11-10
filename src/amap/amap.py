@@ -215,12 +215,15 @@ class LMamap:
 
         return self.amap, self.tokens_count, n_sentences
     
-    def sanity_check(self, n_sentences=None):
+    def sanity_check(self, n_sentences=None, return_test=False):
         warning_flag = ''
+        test_result = {}
         if 'input' in self.mode and 'output' in self.mode:
             try:
                 input_token_sum = self.tokens_count['input'].sum(0)
                 output_token_sum = self.tokens_count['output'].sum(0)
+                test_result['input_token_sum'] = input_token_sum
+                test_result['output_token_sum'] = output_token_sum
                 assert input_token_sum == output_token_sum
             except AssertionError:
                 logging.warning(f'Input and output do not have the same number of tokens! Input:{input_token_sum}. Output:{output_token_sum}')
@@ -228,19 +231,25 @@ class LMamap:
             try:
                 total_input = (self.amap['input'][0].float() * self.tokens_count['input'].unsqueeze(-1).float()).sum()
                 total_output = (self.amap['output'][0].float() * self.tokens_count['output'].unsqueeze(-1).float()).sum()
-                assert abs(total_input - total_output) < 1
+                # assert abs(total_input - total_output) < max(total_input, total_output) * 1e-2
+                diff = abs(total_input - total_output)/max(total_input, total_output)
+                test_result['diff_input_output'] = diff
+                assert diff < 1e-3
             except AssertionError:
-                logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}')
+                logging.warning(f'Input and output do not have the same total activation! Input:{total_input}. Output:{total_output}. Diff: {diff}')
                 warning_flag += 'wAct'
         if 'position' in self.special_tracking and n_sentences is not None:
             # check that position 0 is counted n_sample times
             try:
                 position_count = self.tokens_count['input'][0+self.position_offset]
+                test_result['position_count'] = position_count
                 assert position_count == n_sentences
             except AssertionError:
                 logging.warning(f'Position 0 count is not correct! Position 0 count:{position_count}. Number of sentences:{n_sentences}')
                 warning_flag += 'wPos'
-        return warning_flag
+        res = (warning_flag,)
+        if return_test: res+=(test_result,)
+        return res
 
     def load(self, datafolder, dataset, window_size) -> None:
         pickle_files = [f for f in os.listdir(datafolder) if f.endswith('.pickle')]
