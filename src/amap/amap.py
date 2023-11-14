@@ -8,6 +8,9 @@ from src.model.causal_lm import CausalLanguageModel
 from src.data.dataset_loader import tokenize_slice_batch, load_hf_dataset_with_sampling
 import pickle
 from tqdm import tqdm
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
 
 class LMamap:
     def __init__(self, model: CausalLanguageModel, mode=['input', 'output'], device='cuda', fp16=True) -> None:
@@ -40,7 +43,7 @@ class LMamap:
 
         self.amap = {}
         vocab_size = self.model.get_vocab_size() 
-        amap_dim = (vocab_size, self.n_units)
+        self.amap_dim = (vocab_size, self.n_units)
         
         # init token/unit matrix
         '''
@@ -48,9 +51,9 @@ class LMamap:
         provides the accumulated activation of knowledge neuron j when vocab item i is the last token of the input
         '''
         if 'input' in self.mode:
-            self.amap['input'] = [torch.full(size=amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
+            self.amap['input'] = [torch.full(size=self.amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
         if 'output' in self.mode:
-            self.amap['output'] = [torch.full(size=amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
+            self.amap['output'] = [torch.full(size=self.amap_dim, fill_value=0.0, dtype=self.dtype) for l in range(self.n_layers)]
         self.tokens_count = {
             'input':torch.zeros(size=(vocab_size,)).int().to(self.device), 
             'output':torch.zeros(size=(vocab_size,)).int().to(self.device)}
@@ -273,6 +276,49 @@ class LMamap:
         warn = self.sanity_check()
         if warn != '': logging.warning(f'The loaded files contain errors: {warn}')
         print('[AMAP] Done :-)')
+
+    def get_df_amap(self):
+        """
+        Transform the amap into a daframe
+        """
+        df_list = []
+        token_list = [self.model.tokenizer.decode(i) for i in range(len(self.model.tokenizer))]
+        for m in self.mode:
+            for l in range(self.n_layers):
+                df_temp = pd.DataFrame(self.amap[m][l].t(), columns=token_list)
+                df_temp['#unit'] = [f'{l}_{i}' for i in range(self.n_units)]
+                df_temp['#mode'] = [m,] * self.n_units
+                df_temp['#layer'] = [l,] * self.n_units
+                df_temp['#mean'] = self.amap[m][l].t().mean(-1).tolist()
+                # df_temp['#max'] = self.amap[m][l].t().max(-1).tolist()
+                df_list.append(df_temp)
+        df_amap = pd.concat(df_list)
+        return df_amap
+
+    def get_most_activating_tokens(self, df_amap, unit, top=50):
+        token_list = [self.model.tokenizer.decode(i) for i in range(len(self.model.tokenizer))]
+        df_id = df_amap[df_amap['#unit']==unit].index
+        top_tokens = list(df_amap.iloc[df_id][token_list].sort_values(ascending=False).index)[:50]
+        return top_tokens
+
+    def get_activation_histogram(self, aggregation='mean'):
+        df_amap = self.get_df_amap()
+        v_plot = sns.violinplot(data=df_amap[df_amap['#mode']=='input'], x="#layer", y='#'+aggregation)
+        v_plot.set_yscale("log")
+        fig = v_plot.get_figure()
+        fig.savefig("hist.png") 
+        histograms = None
+        return histograms
+
+    def identify_dead_units(self, threshold=0.1):
+        dead_mask = {}
+        for m in self.mode:
+            for l in range(self.n_layers):
+                max_per_unit = self.amap[m][l].max(0).values # get max over tokens 
+                is_dead = max_per_unit < (0 + threshold) # filter max < threshold
+                print(f'[AMAP][Dead units] Mode {m} Layer {l}: ', str(is_dead.sum().item()))
+                sns.histplot(max_per_unit, kde=True).get_figure().savefig(f"debug_{m}_{l}.png")
+                plt.clf()
 
 
 def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'):

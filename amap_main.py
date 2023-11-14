@@ -63,6 +63,10 @@ if __name__ == "__main__":
         if positions are tracked (check flags in amapper.special_tracking), the position id correspond to:
         position i = amapper.position_offset + i
         """
+        dead_mask = amapper.identify_dead_units()
+        act_hist = amapper.get_activation_histogram(aggregation='mean')
+        print(act_hist)
+
         
 
     elif args.extract:
