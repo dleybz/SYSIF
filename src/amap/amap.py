@@ -175,6 +175,13 @@ class LMamap:
 
                 # get activations
                 activations = [self.kn_act_buffer[l].detach().clone() for l in range(self.n_layers)] # updated after each forward pass
+                
+                # reshape tensor to [batch size, sequence size, act size]: activations have different shape depending on the LM...
+                if 'opt' in self.model.model_name:
+                    for l in range(self.n_layers):
+                        d1, d2 = activations[l].shape
+                        activations[l] = activations[l].reshape(batch_size, -1, d2)
+
                 for special in self.special_tracking:
                     if special == 'position':
                         """

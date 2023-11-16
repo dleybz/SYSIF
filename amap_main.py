@@ -42,9 +42,13 @@ if __name__ == "__main__":
     init_device(args.device)
 
     model_name = args.model_name
-    model = CausalLanguageModel(model_name, device="cuda" if torch.cuda.is_available() else "cpu", fp16=args.fp16)
+    model = CausalLanguageModel(
+        model_name,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        fast_tkn=True if not ('opt' in model_name) else False, #because of a bug in OPT
+        fp16=args.fp16)
 
-    mode = ['input', 'output']
+    mode = ['input',]# 'output']
 
     amapper = LMamap(model=model,
                      device=args.device,
