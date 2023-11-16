@@ -10,7 +10,8 @@ class CausalLanguageModel:
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16 if fp16 else torch.float32).to(self.device)
-        
+        self.layer_act = self.get_act_fn()
+
     def generate_text(self, prompt, max_length=50, num_return_sequences=1):
         input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
         output = self.model.generate(input_ids, max_length=max_length, num_return_sequences=num_return_sequences, no_repeat_ngram_size=2)
@@ -59,7 +60,9 @@ class CausalLanguageModel:
 
     def save_kn_act_hook(self, layer) -> Callable:
         def fn(_, __, output):
-            self.kn_act_buffer[layer] = torch.relu(output.detach()).cpu()
+            before_act = output.detach()
+            after_act = self.layer_act(before_act) # apply activation
+            self.kn_act_buffer[layer] = after_act.cpu()
         return fn   
 
     # def get_attention_maps(self, input_text):
@@ -84,7 +87,13 @@ class CausalLanguageModel:
     #     return intermediate_layer 
     
     def get_vocab(self):
-        return self.tokenizer.vocab
+        if 'opt' in self.model_name:
+            vocab = list(self.tokenizer.encoder)
+        elif 'pythia' in self.model_name:
+            vocab = self.tokenizer.vocab
+        else:
+            vocab = self.tokenizer.vocab
+        return vocab
     
     def get_vocab_size(self):
         # warning: tokenizer.vocab_size only return the vocab size without taking into account the added tokens.
@@ -118,7 +127,20 @@ class CausalLanguageModel:
         else:
             return sum([self.get_knowledge_neurons(i).out_features for i in range(self.get_nb_layers())])
 
+    def get_act_fn(self):
+        if 'opt' in self.model_name:
+            act_str = self.model.model.config.activation_function
+        elif 'pythia' in self.model_name:
+            act_str = self.model.config.hidden_act
+        else: # default
+            act_str = 'relu'
         
+        if act_str == 'relu':
+            return torch.nn.ReLU()
+        elif act_str == 'gelu':
+            return torch.nn.GELU()
+        else: # relu by default
+            return torch.nn.GELU()
 
 if __name__ == "__main__":
     # Example usage
