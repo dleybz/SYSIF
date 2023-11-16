@@ -314,14 +314,22 @@ class LMamap:
         dead_mask = {}
         for m in self.mode:
             for l in range(self.n_layers):
-                # max_per_unit = self.amap[m][l].max(0).values # get max over tokens 
-                # is_dead = max_per_unit < (0 + threshold) # filter max < threshold
-                # print(f'[AMAP][Dead units] Mode {m} Layer {l}: ', str(is_dead.sum().item()))
-                # sns.histplot(max_per_unit, kde=True).get_figure().savefig(f"debug_{m}_{l}.png")
+                max_per_unit = self.amap[m][l].max(0).values # get max over tokens 
+                is_dead = max_per_unit < (0 + threshold) # filter max < threshold
+                print(f'[AMAP][Dead units] Mode {m} Layer {l}: ', str(is_dead.sum().item()))
+                sns.histplot(max_per_unit, kde=True).get_figure().savefig(f"debug_{m}_{l}.png")
+                plt.clf()
+                count_nz_per_unit = self.amap[m][l].count_nonzero(dim=0) / self.amap_dim[0] # normalized
+                sns.histplot(count_nz_per_unit, kde=True).get_figure().savefig(f"nz_{m}_{l}.png")
+                plt.clf()
                 count_nz_per_unit = self.amap[m][l].count_nonzero(dim=0) / self.amap_dim[0] # normalized
                 sns.histplot(count_nz_per_unit, kde=True).get_figure().savefig(f"nz_{m}_{l}.png")
                 plt.clf()
 
+def get_entropy(logits, predict_mask):
+    log_prob = F.log_softmax(logits, dim=-1)
+    prob = F.softmax(logits, dim=-1)
+    return -(prob * log_prob).sum(-1)[predict_mask]
 
 def cumulative_average(new_item, new_count, old_count, old_average, device='cpu'):
     datatype = old_average.dtype
