@@ -321,16 +321,19 @@ class LMamap:
         dead_mask = {}
         for m in self.mode:
             for l in range(self.n_layers):
+                m_name = self.model.model_name.replace('/', '_')
                 max_per_unit = self.amap[m][l].max(0).values # get max over tokens 
                 is_dead = max_per_unit < (0 + threshold) # filter max < threshold
                 print(f'[AMAP][Dead units] Mode {m} Layer {l}: ', str(is_dead.sum().item()))
-                sns.histplot(max_per_unit, kde=True).get_figure().savefig(f"debug_{m}_{l}.png")
+                sns.histplot(max_per_unit, kde=True).get_figure().savefig(f"{m_name}_max_{m}_{l}.png")
                 plt.clf()
                 count_nz_per_unit = self.amap[m][l].count_nonzero(dim=0) / self.amap_dim[0] # normalized
-                sns.histplot(count_nz_per_unit, kde=True).get_figure().savefig(f"nz_{m}_{l}.png")
+                sns.histplot(count_nz_per_unit, kde=True).get_figure().savefig(f"{m_name}_nz_{m}_{l}.png")
                 plt.clf()
-                count_nz_per_unit = self.amap[m][l].count_nonzero(dim=0) / self.amap_dim[0] # normalized
-                sns.histplot(count_nz_per_unit, kde=True).get_figure().savefig(f"nz_{m}_{l}.png")
+                var_per_unit = self.amap[m][l].var(dim=0)
+                is_dead = var_per_unit < (0 + 1e-3) # filter max < threshold
+                print(f'[AMAP][Low-var units] Mode {m} Layer {l}: ', str(is_dead.sum().item()))
+                sns.histplot(var_per_unit, kde=True).get_figure().savefig(f"{m_name}_var_{m}_{l}.png")
                 plt.clf()
 
 def get_entropy(logits, predict_mask):
