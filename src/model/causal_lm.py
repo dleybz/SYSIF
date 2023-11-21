@@ -8,7 +8,7 @@ class CausalLanguageModel:
     def __init__(self, model_name, device="cpu", fast_tkn=True, fp16=True):
         self.device = torch.device(device)
         self.model_name = model_name
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn)
+        self.tokenizer = self.prepare_tokenizer(model_name, fast_tkn)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16 if fp16 else torch.float32).to(self.device)
         print(self.model)
         self.layer_act = self.get_act_fn()
@@ -19,10 +19,17 @@ class CausalLanguageModel:
         generated_text = [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in output]
         return generated_text
 
+    def forward_per_layer(self, inputs):
+        n_layers = self.get_nb_layers()
+        for l_idx in range(n_layers):
+            # process
+            print('')
+        return None
+
     def forward_pass_from_text(self, input_text):
-        input_ids = self.tokenizer.encode(input_text, return_tensors='pt').to(self.device)
-        output = self.model(input_ids)
-        return output
+        input_ids = self.tokenizer(input_text, padding=True, return_tensors='pt').to(self.device)
+        output = self.model(**input_ids)
+        return (output, input_ids['attention_mask'])
     
     def forward_pass_from_tkns(self, input_ids, attention_mask):
         output = self.model(input_ids, attention_mask)
@@ -142,6 +149,13 @@ class CausalLanguageModel:
             return torch.nn.GELU()
         else: # relu by default
             return torch.nn.GELU()
+
+
+    def prepare_tokenizer(self, model_name, fast_tkn):
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn)
+        tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+        return tokenizer
+
 
 if __name__ == "__main__":
     # Example usage
