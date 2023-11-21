@@ -4,7 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 import logging
 
-from src.prompt.machine_prompt import EvoMachinePrompt, init_char_crossover, init_char_mutate, init_lama_fitness
+# from src.prompt.machine_prompt import EvoMachinePrompt, init_char_crossover, init_char_mutate, init_lama_fitness
 from src.prompt.utils import parse_paraphrases
 from src.data.lama_dataset import LAMAset
 from src.utils.init_utils import init_device, init_random_seed
@@ -22,6 +22,9 @@ def parse_args():
     parser.add_argument('--device', type=str, default='cuda', help='Which computation device: cuda or mps')
     parser.add_argument('--output_dir', type=str, default='./amap', help='the output directory to store prediction results')
     parser.add_argument('--fp16', action='store_true', help='use half precision')
+    parser.add_argument('--paraphrase_path', type=str, default='data/paraphrases/relation-paraphrases_v2.txt')
+    parser.add_argument('--lama_path', type=str, default='data/opti-data/autoprompt_data')
+
 
     args = parser.parse_args()
     print(args)
@@ -44,11 +47,10 @@ if __name__ == "__main__":
         fp16=args.fp16)
 
     #load LAMA
-    lamaset = LAMAset('data/opti-data/autoprompt_data')
+    lamaset = LAMAset(args.lama_path)
 
     #load human rephrases
-    PARAPHRASES_PATH='data/paraphrases/relation-paraphrases_v2.txt'
-    paraphrases=parse_paraphrases(PARAPHRASES_PATH)
+    paraphrases=parse_paraphrases(args.paraphrase_path)
 
     # store evaluation results on a dataframe
     df_evaluation = pd.DataFrame()
