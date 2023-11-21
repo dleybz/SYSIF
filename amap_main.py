@@ -89,7 +89,7 @@ if __name__ == "__main__":
                     window_stride=args.window_stride)
         
         # safety check
-        warning_flag = amapper.sanity_check(n_sentences)
+        warning_flag = amapper.sanity_check(n_sentences)[0]
 
         # Save with pickle
         print('Saving stats...')
