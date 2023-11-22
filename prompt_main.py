@@ -50,7 +50,7 @@ if __name__ == "__main__":
     lamaset = LAMAset(args.lama_path)
 
     #load human rephrases
-    paraphrases=parse_paraphrases(args.paraphrase_path)
+    paraphrases=parse_paraphrases(args.paraphrase_path)           
 
     # store evaluation results on a dataframe
     df_evaluation = pd.DataFrame()
@@ -59,12 +59,16 @@ if __name__ == "__main__":
     print('Constructing the prompts...')
     df_prompts = []
     for relation in lamaset.get_relations():
+        lama_label = lamaset.info[lamaset.info['relation']==relation]['label'].item()
         try:
             for tid, this_template in enumerate(paraphrases[relation]):
+                # this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
+                # this_template = f'Source: Wikipedia. '+this_template
+                this_template = this_template+':'
                 # fill the template with LAMA's objects
-                filled_list = lamaset.fill_template('P1001', this_template, set='test')
+                filled_list = lamaset.fill_template(relation, this_template, set='dev')
                 df_temp = pd.DataFrame()
-                df_temp['prompt'] = [tp[0] for tp in filled_list]
+                df_temp['prompt'] = [tp[0].strip() for tp in filled_list]
                 df_temp['label'] = [tp[1] for tp in filled_list]
                 df_temp['relation'] = [relation,] * len(df_temp)
                 df_temp['template_id'] = [f'{relation}_{tid}',] * len(df_temp)
@@ -72,6 +76,14 @@ if __name__ == "__main__":
         except KeyError:
             logging.warning(f'[EVALUATION] Paraphrase does not contains the relation {relation}. Skipping it.')
     df_prompts = pd.concat(df_prompts)
+
+    # while(True):
+    #     df_sample = df_prompts.sample(10)
+    #     print("========== Samples:")
+    #     print(df_sample)
+    #     print("========== Samples:")
+    #     input('')
+
 
     # feed prompts to the LM and gather predictions
     prompt_list = df_prompts['prompt'].values.tolist()
@@ -82,8 +94,9 @@ if __name__ == "__main__":
         next_token_idx = attention_mask.sum(-1) - 1
         pred_logits = output.logits[range(len(batch)), next_token_idx].detach()
         pred = torch.argmax(pred_logits, dim=-1)
-        pred_tokens = [model.tokenizer.decode(p) for p in pred]
-        pred_list.append(pred_tokens)
+        assert not pred.isnan().any()
+        pred_tokens = [model.tokenizer.decode(p).strip() for p in pred]
+        pred_list += pred_tokens
     df_prompts['pred'] = pred_list
 
     df_prompts.to_csv(model.model_name.replace('/', '_')+'_paraphrase_eval.csv')
@@ -91,15 +104,19 @@ if __name__ == "__main__":
 
     # evaluate paraphrases + the model
 
-    df_prompts['correct'] = (df_prompts['label'] == df_prompts['pred'])
+    df_prompts['correct'] = (df_prompts['label'] == df_prompts['pred']).astype(int)
     
     macro_all = df_prompts['correct'].mean()
+    print(macro_all)
     
-    micro_max = df_prompts.groupby('relation').max().mean()
-    micro_mean = df_prompts.groupby('relation').mean().mean()
-    micro_min = df_prompts.groupby('relation').min().mean()
+    # take the best template for each relation, then average
+    micro_max = df_prompts.groupby(['relation', 'template_id'])['correct'].mean().groupby('relation').max().mean()
+    print(micro_max)
+    micro_mean = df_prompts.groupby('relation')['correct'].mean().mean()
+    micro_min = df_prompts.groupby('relation')['correct'].min().mean()
 
     # averaged per label accuracy
-    micro_max_balanced = df_prompts.groupby(['relation', 'label']).mean().mean()
+    micro_max_balanced = df_prompts.groupby(['relation', 'label'])['correct'].mean().mean()
 
         # accuracy top1, top5, f1score
+    
