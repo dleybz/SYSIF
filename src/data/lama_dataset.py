@@ -9,7 +9,8 @@ import pandas as pd
 class LAMAset:
     def __init__(self, lama_path) -> None:
 
-        self.dataset = load_lama_local(lama_path)
+        self.dataset, self.info = load_lama_local(lama_path)
+        
         
     def preprocess(self, balance=True, no_overlap=True):
         """
@@ -56,7 +57,7 @@ def load_lama_local(datapath):
     """
     lama_dataset = []
     relation_folders = [f[0].split('/')[-1] for f in os.walk(datapath)]
-    relation_folders = [f for f in relation_folders if f[0]=='P']
+    relation_folders = [f for f in relation_folders if (len(f)>0 and f[0]=='P')]
     for rel_f in relation_folders:
         # rel_f is a folder containing the dev/test/train jsonl
         for split in ['dev', 'test', 'train']:
@@ -65,4 +66,5 @@ def load_lama_local(datapath):
             df['set'] = [split,]*len(df)
             lama_dataset.append(df)
     lama_dataset = pd.concat(lama_dataset)
-    return lama_dataset
+    lama_info = pd.read_json(path_or_buf=os.path.join(datapath, 'LAMA_relations.jsonl'), lines=True)
+    return lama_dataset, lama_info
