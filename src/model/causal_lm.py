@@ -10,7 +10,7 @@ class CausalLanguageModel:
         self.model_name = model_name
         self.tokenizer = self.prepare_tokenizer(model_name, fast_tkn)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16 if fp16 else torch.float32).to(self.device)
-        print(self.model)
+        # print(self.model)
         self.layer_act = self.get_act_fn()
 
     def generate_text(self, prompt, max_length=50, num_return_sequences=1):
@@ -156,6 +156,10 @@ class CausalLanguageModel:
         tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
         return tokenizer
 
+    def prompt(self, text):
+        inputs = self.tokenizer(text, return_tensors="pt")
+        tokens = self.model.generate(**inputs.to(self.device))
+        return self.tokenizer.decode(tokens[0])
 
 if __name__ == "__main__":
     # Example usage
