@@ -1,18 +1,34 @@
 import torch
+import torch.nn.functional as F
 import logging
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from typing import Callable
 
 
 class CausalLanguageModel:
-    def __init__(self, model_name, device="cpu", fast_tkn=True, fp16=True):
+    def __init__(self, model_name, device="cpu", fast_tkn=True, fp16=True, padding_side='right'):
         self.device = torch.device(device)
         self.model_name = model_name
-        self.tokenizer = self.prepare_tokenizer(model_name, fast_tkn)
+        self.tokenizer = self.prepare_tokenizer(model_name, fast_tkn, padding_side=padding_side)
         self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16 if fp16 else torch.float32).to(self.device)
         # print(self.model)
         self.layer_act = self.get_act_fn()
 
+    def generate_tokens_batch(self, tkns_input, n_tokens):
+        tokens_generated = self.model.generate(
+            input_ids=tkns_input.input_ids,
+            attention_mask=tkns_input.attention_mask,
+            max_new_tokens=n_tokens, do_sample=False, top_k=1,
+            eos_token_id=self.tokenizer.eos_token_id, pad_token_id=self.tokenizer.eos_token_id)
+        tokens_generated = tokens_generated[:, -n_tokens:]
+        return tokens_generated
+
+    def generate_tokens_from_text_batch(self, text_input, n_tokens):
+        input_ids = self.tokenizer(text_input, padding=True, return_tensors='pt').to(self.device)
+        tokens_generated = self.generate_tokens_batch(input_ids, n_tokens)
+        text_generated = [self.tokenizer.decode(t) for t in tokens_generated]
+        return text_generated
+    
     def generate_text(self, prompt, max_length=50, num_return_sequences=1):
         input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
         output = self.model.generate(input_ids, max_length=max_length, num_return_sequences=num_return_sequences, no_repeat_ngram_size=2)
@@ -151,8 +167,8 @@ class CausalLanguageModel:
             return torch.nn.GELU()
 
 
-    def prepare_tokenizer(self, model_name, fast_tkn):
-        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn)
+    def prepare_tokenizer(self, model_name, fast_tkn, padding_side):
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=fast_tkn, padding_side=padding_side)
         tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
         return tokenizer
 

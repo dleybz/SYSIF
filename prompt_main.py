@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument('--fp16', action='store_true', help='use half precision')
     parser.add_argument('--paraphrase_path', type=str, default='data/paraphrases/relation-paraphrases_v2.txt')
     parser.add_argument('--lama_path', type=str, default='data/opti-data/autoprompt_data')
+    parser.add_argument('--n_generated_tokens', type=int, default=2)
 
 
     args = parser.parse_args()
@@ -44,7 +45,8 @@ if __name__ == "__main__":
         model_name,
         device="cuda" if torch.cuda.is_available() else "cpu",
         fast_tkn=True if not ('opt' in model_name) else False, #because of a bug in OPT
-        fp16=args.fp16)
+        fp16=args.fp16,
+        padding_side='left')
 
     #load LAMA
     lamaset = LAMAset(args.lama_path)
@@ -64,7 +66,6 @@ if __name__ == "__main__":
             for tid, this_template in enumerate(paraphrases[relation]):
                 # this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
                 # this_template = f'Source: Wikipedia. '+this_template
-                this_template = this_template+':'
                 # fill the template with LAMA's objects
                 filled_list = lamaset.fill_template(relation, this_template, set='dev')
                 df_temp = pd.DataFrame()
@@ -90,17 +91,11 @@ if __name__ == "__main__":
     pred_list = []
     batches, n_batches = batchify(prompt_list, args.batch_size, drop_last=False, output_text=True)
     for batch in tqdm(batches, desc="[EVALUATION]"):
-        (output, attention_mask) = model.forward_pass_nograd(batch, tokenize=True)
-        next_token_idx = attention_mask.sum(-1) - 1
-        pred_logits = output.logits[range(len(batch)), next_token_idx].detach()
-        pred = torch.argmax(pred_logits, dim=-1)
-        assert not pred.isnan().any()
-        pred_tokens = [model.tokenizer.decode(p).strip() for p in pred]
-        pred_list += pred_tokens
+        text_generated = model.generate_tokens_from_text_batch(batch, n_tokens=args.n_generated_tokens)
+        pred_list += text_generated
     df_prompts['pred'] = pred_list
 
     df_prompts.to_csv(model.model_name.replace('/', '_')+'_paraphrase_eval.csv')
-
 
     # evaluate paraphrases + the model
 
