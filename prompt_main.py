@@ -64,7 +64,8 @@ if __name__ == "__main__":
         lama_label = lamaset.info[lamaset.info['relation']==relation]['label'].item()
         try:
             for tid, this_template in enumerate(paraphrases[relation]):
-                # this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
+                this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
+                # this_template = f'Label: {lama_label}. '+this_template
                 # this_template = f'Source: Wikipedia. '+this_template
                 # fill the template with LAMA's objects
                 filled_list = lamaset.fill_template(relation, this_template, set='dev')
@@ -99,8 +100,7 @@ if __name__ == "__main__":
 
     # evaluate paraphrases + the model
 
-    df_prompts['correct'] = (df_prompts['label'] == df_prompts['pred']).astype(int)
-    
+    df_prompts['correct'] = df_prompts.apply(lambda row: row['label'] in row['pred'], axis=1)    
     macro_all = df_prompts['correct'].mean()
     print(macro_all)
     
@@ -109,6 +109,12 @@ if __name__ == "__main__":
     print(micro_max)
     micro_mean = df_prompts.groupby('relation')['correct'].mean().mean()
     micro_min = df_prompts.groupby('relation')['correct'].min().mean()
+
+    # get best templates
+    idmax = df_prompts.groupby(['relation', 'template_id'])['correct'].mean().groupby(['relation']).idxmax()
+    best_templates = [rel[-1] for rel in idmax]
+    df_best = df_prompts[df_prompts['template_id'].isin(best_templates)]
+    df_best.groupby(['relation', 'template_id'])['correct'].mean().mean()
 
     # averaged per label accuracy
     micro_max_balanced = df_prompts.groupby(['relation', 'label'])['correct'].mean().mean()
