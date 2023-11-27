@@ -124,7 +124,7 @@ class DiscreteGradientPromptSearch():
                     # feed the model with the data
                     output = self.model.forward_pass((inputs, attention_mask), tokenize=False)
                     pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
-                    pred_logit = output.logits[range(batch_size), pred_id]
+                    pred_logit = output.logits[len(batch), pred_id]
                     # compute loss
                     loss = self.nll(pred_logit, torch.tensor(labels)).mean()
                     # compute gradient of loss vs input embedding
@@ -132,7 +132,7 @@ class DiscreteGradientPromptSearch():
                     embeddings = self.model.get_embeddings().weight
                     embeddings_gradient = self.get_embedding_gradient()
                     # only keep the gradient of the template tokens
-                    template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1)).view(batch_size, -1, embeddings.size(-1))
+                    template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1)).view(len(batch), -1, embeddings.size(-1))
                     accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
                 # Mutation: hotflip attack (from Autoprompt)
                 with torch.no_grad():
