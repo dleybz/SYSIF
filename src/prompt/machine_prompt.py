@@ -105,7 +105,9 @@ class DiscreteGradientPromptSearch():
         while(not_finished):
             cpt_iteration += 1
 
-            for (machine_template, _) in tqdm(population_template, desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population"):
+            print(population_template)
+
+            for (machine_template, _) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
                 filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
                 batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
@@ -150,7 +152,7 @@ class DiscreteGradientPromptSearch():
             
             # evaluate the new templates in the population
             df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
-            population_template = [(d[0], d[1]) for d in df_eval.groupby('template_id')['correct'].mean().reset_index().values.tolist()]\
+            population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in population_template if t[1] is not None]
             # select the best template of the population (sampling)
             scores = torch.tensor([d[1] for d in population_template])
