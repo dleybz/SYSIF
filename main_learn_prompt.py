@@ -41,6 +41,7 @@ if __name__ == "__main__":
     init_device(args.device)
 
     # load LM
+    print("Loading model...")
     model_name = args.model_name
     model = CausalLanguageModel(
         model_name,
@@ -50,13 +51,17 @@ if __name__ == "__main__":
         padding_side='left')
 
     #load LAMA
+    print("Loading LAMA...")
     lamaset = LAMAset(args.lama_path, portion=0.05)
 
     #load human rephrases
+    print("Loading human paraphrases...")
     paraphrases=parse_paraphrases(args.paraphrase_path)        
     # only keep template where '[X]' is the first token / TODO: adress this
     paraphrases={relation:[t for t in templates if t.startswith('[X]')] for relation,templates in paraphrases.items()}
 
+
+    print("Starting!")
     # initialise the algo
     autoprompt = DiscreteGradientPromptSearch(model)
 
