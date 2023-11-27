@@ -133,7 +133,7 @@ class DiscreteGradientPromptSearch():
                     embeddings = self.model.get_embeddings().weight
                     embeddings_gradient = self.get_embedding_gradient()
                     # only keep the gradient of the template tokens
-                    template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1)).view(len(batch), -1, embeddings.size(-1))
+                    template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), -1, embeddings.size(-1))
                     accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
                 # Mutation: hotflip attack (from Autoprompt)
                 with torch.no_grad():
