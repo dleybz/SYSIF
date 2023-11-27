@@ -16,6 +16,7 @@ from tqdm import tqdm
 class DiscreteGradientPromptSearch():
     def __init__(self, model: CausalLanguageModel,) -> None:
         self.model = model
+        self.device = model.device
         self._stored_embeddings_gradient = None # the gradient will be store here
         self.prepare_model()
         self.n_generated_tokens = 1
@@ -122,11 +123,11 @@ class DiscreteGradientPromptSearch():
                     # todo: this is hacky
                     template_mask = torch.tensor([[0,]*len(d[0])+[1,]*len(d[1])+[0,]*(max_length-(len(d[0])+len(d[1]))) for d in batch]).bool()# 1 if the token is part of the template 0 otherwise
                     # feed the model with the data
-                    output = self.model.forward_pass((inputs, attention_mask), tokenize=False)
+                    output = self.model.forward_pass((inputs.to(self.device), attention_mask.to(self.device)), tokenize=False)
                     pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
                     pred_logit = output.logits[range(len(batch)), pred_id]
                     # compute loss
-                    loss = self.nll(pred_logit, torch.tensor(labels)).mean()
+                    loss = self.nll(pred_logit, torch.tensor(labels).to(self.device)).mean()
                     # compute gradient of loss vs input embedding
                     loss.backward()
                     embeddings = self.model.get_embeddings().weight
