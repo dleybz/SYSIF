@@ -124,7 +124,7 @@ class DiscreteGradientPromptSearch():
                     # feed the model with the data
                     output = self.model.forward_pass((inputs, attention_mask), tokenize=False)
                     pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
-                    pred_logit = output.logits[len(batch), pred_id]
+                    pred_logit = output.logits[range(len(batch)), pred_id]
                     # compute loss
                     loss = self.nll(pred_logit, torch.tensor(labels)).mean()
                     # compute gradient of loss vs input embedding
