@@ -1,5 +1,7 @@
 # Debugging in container with visual code
 
+> docker build --platform linux/amd64 .
+
 if the image is "registry.sb.upf.edu/colt/sysif:0.1", do:
 > docker run -m 16g --platform linux/amd64 -it -dp 80:80 -v /Users/corentk/UNLACE/SYSIF:/sysif registry.sb.upf.edu/colt/sysif:0.3
 

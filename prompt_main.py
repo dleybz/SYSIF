@@ -70,7 +70,7 @@ if __name__ == "__main__":
                 # fill the template with LAMA's objects
                 filled_list = lamaset.fill_template(relation, this_template, set='dev')
                 df_temp = pd.DataFrame()
-                df_temp['prompt'] = [tp[0].strip() for tp in filled_list]
+                df_temp['prompt'] = [tp[0] for tp in filled_list]
                 df_temp['label'] = [tp[1] for tp in filled_list]
                 df_temp['relation'] = [relation,] * len(df_temp)
                 df_temp['template_id'] = [f'{relation}_{tid}',] * len(df_temp)
