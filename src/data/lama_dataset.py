@@ -7,11 +7,17 @@ from datasets import load_dataset, Dataset
 import pandas as pd
 
 class LAMAset:
-    def __init__(self, lama_path) -> None:
+    def __init__(self, lama_path, portion=1) -> None:
 
         self.dataset, self.info = load_lama_local(lama_path)
-        
-        
+        self.dataset = self.dataset.sample(int(len(self.dataset)*portion))
+    
+    def lamaset_per_relation(self, relation):
+        dataset_rel = self.dataset[self.dataset['predicate_id']==relation]
+        info_rel = self.info[self.info['relation']==relation]
+
+        return dataset_rel, info_rel
+
     def preprocess(self, balance=True, no_overlap=True):
         """
         train/val/test split
@@ -41,7 +47,32 @@ class LAMAset:
         this_set = this_set[this_set['predicate_id']==relation]
         pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
         
-        filled_data = [(template.replace('[X]', subj), obj) for subj, obj in pair_list]
+        filled_data = [(template.replace('[X]', subj).strip(), obj) for subj, obj in pair_list]
+        return filled_data
+
+    def fill_template_and_tokenize(self, relation, template, tokenizer, set='train'):
+        """
+        Fill and tokenize the templates
+
+        A template should be in the form "[X] ..... [Y]"
+        But [X] is not necessarly at the beginning.
+
+        Return a list of tuples: (tokn_obj, tokn_core_template, tkn_object)
+        """
+        if not template.endswith('[Y]'):
+            logging.warning(f'[LAMA] Trying to fill in a template that doesnt end with [Y] -> STOP\n{template}')
+            return None
+        else:
+            # troncate the template by removing [Y]
+            template = template[:-3]
+
+        this_set = self.dataset[self.dataset['set']==set]
+        this_set = this_set[this_set['predicate_id']==relation]
+        pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
+        
+        core_tokenized = tokenizer.encode(template.replace('[X]', '').strip())
+        # TODO: adding the space before obj:-> this is very Pythia specific, change it
+        filled_data = [(tokenizer.encode(subj), core_tokenized, tokenizer.encode(' '+obj)) for subj, obj in pair_list]
         return filled_data
     
     def evaluate(self):

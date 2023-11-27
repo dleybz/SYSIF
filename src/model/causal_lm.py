@@ -18,7 +18,7 @@ class CausalLanguageModel:
         tokens_generated = self.model.generate(
             input_ids=tkns_input.input_ids,
             attention_mask=tkns_input.attention_mask,
-            max_new_tokens=n_tokens, do_sample=False, top_k=1,
+            max_new_tokens=n_tokens, do_sample=False,
             eos_token_id=self.tokenizer.eos_token_id, pad_token_id=self.tokenizer.eos_token_id)
         tokens_generated = tokens_generated[:, -n_tokens:]
         return tokens_generated
@@ -53,11 +53,15 @@ class CausalLanguageModel:
 
     def forward_pass_nograd(self, input, tokenize=True):
         with torch.no_grad():
-            if tokenize:
-                output = self.forward_pass_from_text(input)
-            else:
-                input_ids, attention_mask = input
-                output = self.forward_pass_from_tkns(input_ids=input_ids.to(self.device), attention_mask=attention_mask.to(self.device))
+            output = self.forward_pass(input, tokenize)    
+        return output
+    
+    def forward_pass(self, input, tokenize=True):
+        if tokenize:
+            output = self.forward_pass_from_text(input)
+        else:
+            input_ids, attention_mask = input
+            output = self.forward_pass_from_tkns(input_ids=input_ids.to(self.device), attention_mask=attention_mask.to(self.device))
         return output
 
     def get_output_probability(self, input_text):
@@ -122,6 +126,15 @@ class CausalLanguageModel:
     def get_vocab_size(self):
         # warning: tokenizer.vocab_size only return the vocab size without taking into account the added tokens.
         return len(self.tokenizer)
+
+    def get_embeddings(self):
+        if 'opt' in self.model_name:
+            embeddings = self.model.model.decoder.embed_tokens
+        elif 'pythia' in self.model_name:
+            embeddings = self.model.gpt_neox.embed_in
+        else:
+            embeddings = self.model.gpt_neox.embed_in
+        return embeddings
 
     def get_layers(self):
         if 'opt' in self.model_name:
