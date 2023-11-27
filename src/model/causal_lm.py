@@ -18,7 +18,7 @@ class CausalLanguageModel:
         tokens_generated = self.model.generate(
             input_ids=tkns_input.input_ids,
             attention_mask=tkns_input.attention_mask,
-            max_new_tokens=n_tokens, do_sample=False, top_k=1,
+            max_new_tokens=n_tokens, do_sample=False,
             eos_token_id=self.tokenizer.eos_token_id, pad_token_id=self.tokenizer.eos_token_id)
         tokens_generated = tokens_generated[:, -n_tokens:]
         return tokens_generated
