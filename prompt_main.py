@@ -64,7 +64,7 @@ if __name__ == "__main__":
         lama_label = lamaset.info[lamaset.info['relation']==relation]['label'].item()
         try:
             for tid, this_template in enumerate(paraphrases[relation]):
-                this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
+                # this_template = f'Source: Wikipedia. Label: {lama_label}. '+this_template
                 # this_template = f'Label: {lama_label}. '+this_template
                 # this_template = f'Source: Wikipedia. '+this_template
                 # fill the template with LAMA's objects
