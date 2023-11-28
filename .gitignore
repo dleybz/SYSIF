@@ -160,3 +160,4 @@ docker/images
 *.pickle
 data/
 *.csv
+*.tsv
