@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     #load LAMA
     print("Loading LAMA...")
-    lamaset = LAMAset(args.lama_path, portion=0.05)
+    lamaset = LAMAset(args.lama_path, portion=0.5)
 
     #load human rephrases
     print("Loading human paraphrases...")
@@ -65,11 +65,14 @@ if __name__ == "__main__":
     # initialise the algo
     autoprompt = DiscreteGradientPromptSearch(model)
 
-    for relation in lamaset.get_relations(): # in the future, run all relation in parallel in different scrips
-        initial_template = random.sample(paraphrases[relation], 2)
+    # relations = lamaset.get_relations()
+    relations = ['P176',]
+
+    for relation in relations: # in the future, run all relation in parallel in different scrips
+        initial_template = paraphrases[relation]
         """
         dataset is a list of tuple [(X,Y), ...]
         where X is used to fill in the template and Y is the expected next token.
         """
-        autoprompt.train(initial_template, lamaset, relation, args.n_iterations_max, 4)
+        autoprompt.train(initial_template, lamaset, relation, args.n_iterations_max, args.batch_size)
         # dev set

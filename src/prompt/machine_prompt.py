@@ -19,7 +19,7 @@ class DiscreteGradientPromptSearch():
         self.device = model.device
         self._stored_embeddings_gradient = None # the gradient will be store here
         self.prepare_model()
-        self.n_generated_tokens = 1
+        self.n_generated_tokens = 2
         self.num_candidates = 5
         self.n_population = 5
 
@@ -87,7 +87,7 @@ class DiscreteGradientPromptSearch():
             text_generated = self.model.generate_tokens_from_text_batch(batch, n_tokens=self.n_generated_tokens)
             pred_list += text_generated
         df_candidates['pred'] = pred_list
-        df_candidates['correct'] = (df_candidates['label'] == df_candidates['pred']).astype(int)
+        df_candidates['correct'] = df_candidates.apply(lambda row: row['label'] in row['pred'], axis=1)  
         return df_candidates
         
 
@@ -100,12 +100,17 @@ class DiscreteGradientPromptSearch():
         # in the first iteration, the population size is > than self.n_population
         population_template = [(t, None) for t in initial_population]
 
+        # first, eval the initial population
+        df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
+        print(df_eval)
+        population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]
+        msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
+        print(f'[INITIAL POPULATION]:'+msg)
+
         not_finished = True
         cpt_iteration = 0
         while(not_finished):
             cpt_iteration += 1
-
-            print(population_template)
 
             for (machine_template, _) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
@@ -154,15 +159,16 @@ class DiscreteGradientPromptSearch():
             df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
             population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in population_template if t[1] is not None]
+
             # select the best template of the population (sampling)
-            scores = torch.tensor([d[1] for d in population_template])
+            scores = torch.tensor([d[1] for d in population_template])+ 1e-9
             norm_scores = scores / scores.sum()
             sampled_idx = torch.multinomial(norm_scores, self.n_population, replacement=True).tolist()
-            population_template = population_template[sampled_idx]
+            population_template = [population_template[i] for i in sampled_idx]
             # print
-            if cpt_iteration%100==1:
-                msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
-                print(f'[i-{cpt_iteration}]:'+msg)
+            # if cpt_iteration%100==1:
+            msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
+            print(f'[i-{cpt_iteration}]:'+msg)
             # stop training?
             not_finished = (cpt_iteration <= n_iterations_max)
         return machine_template
