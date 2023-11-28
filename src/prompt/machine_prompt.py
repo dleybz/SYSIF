@@ -21,7 +21,7 @@ class DiscreteGradientPromptSearch():
         self.prepare_model()
         self.n_generated_tokens = 2
         self.num_candidates = 5
-        self.n_population = 5
+        self.n_population = 10
 
     def prepare_model(self) -> None:
         """
@@ -63,9 +63,10 @@ class DiscreteGradientPromptSearch():
                 gradient_dot_embedding_matrix -= filter
             if not increase_loss: # do you want to increase or decrease the loss?
                 gradient_dot_embedding_matrix *= -1
-            _, top_k_ids = gradient_dot_embedding_matrix.topk(num_candidates)
-
-        return top_k_ids
+            # sample from gradient dist
+            score_normalized = gradient_dot_embedding_matrix / gradient_dot_embedding_matrix.sum()
+            sampled_idx = torch.multinomial(score_normalized, num_candidates, replacement=True).tolist()
+        return sampled_idx
 
     def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size):
         # construct the prompts
@@ -102,7 +103,6 @@ class DiscreteGradientPromptSearch():
 
         # first, eval the initial population
         df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
-        print(df_eval)
         population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]
         msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
         print(f'[INITIAL POPULATION]:'+msg)
@@ -147,9 +147,9 @@ class DiscreteGradientPromptSearch():
                     # randomly pick a token which will be mutated
                     averaged_template_gradient = accu_template_gradient / len(filled_data)
                     token_to_mutate = random.randrange(averaged_template_gradient.size(0))
-                    top_k_ids = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
+                    sampled_tokens = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
                 # Add mutated templates to the population
-                for token_candidate in top_k_ids:
+                for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
                     temp[token_to_mutate] = token_candidate.item()
                     temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
