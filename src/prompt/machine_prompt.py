@@ -14,14 +14,13 @@ from tqdm import tqdm
 
 
 class DiscreteGradientPromptSearch():
-    def __init__(self, model: CausalLanguageModel,) -> None:
+    def __init__(self, model: CausalLanguageModel, n_population, num_candidates,) -> None:
         self.model = model
         self.device = model.device
         self._stored_embeddings_gradient = None # the gradient will be store here
         self.prepare_model()
-        self.n_generated_tokens = 2
-        self.num_candidates = 5
-        self.n_population = 50
+        self.num_candidates = num_candidates
+        self.n_population = n_population
         self.temperature_norm=1e-1
         self.topk_display = 3
 
@@ -82,7 +81,7 @@ class DiscreteGradientPromptSearch():
             savelines = '\n'.join([f'{cpt_iteration}\t[START-TEMPLATE]{d[0]}[END-TEMPLATE]\t{d[1]:.2f}' for d in population_set])+'\n'
             f_out.write(savelines)
 
-    def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size):
+    def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size, n_generated_tokens):
         # construct the prompts
         df_candidates = []
         for tid, this_template in enumerate(template_candidates):
@@ -99,7 +98,7 @@ class DiscreteGradientPromptSearch():
         pred_list = []
         batches, n_batches = batchify(prompt_list, batch_size, drop_last=False, output_text=True)
         for batch in tqdm(batches, desc="[EVALUATION]"):
-            text_generated = self.model.generate_tokens_from_text_batch(batch, n_tokens=self.n_generated_tokens)
+            text_generated = self.model.generate_tokens_from_text_batch(batch, n_tokens=n_generated_tokens)
             pred_list += text_generated
         df_candidates['pred'] = pred_list
         df_candidates['correct'] = df_candidates.apply(lambda row: row['label'] in row['pred'], axis=1)  
@@ -116,7 +115,7 @@ class DiscreteGradientPromptSearch():
         population_template = [(t, None) for t in initial_population]
 
         # first, eval the initial population
-        df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
+        df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 2)
         population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]
         population_template.sort(reverse=True, key=lambda x:x[1])
         msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
@@ -171,7 +170,7 @@ class DiscreteGradientPromptSearch():
                     population_template.append((temp_text, None)) # (text_template, score)
             
             # evaluate the new templates in the population
-            df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
+            df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
             population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in population_template if t[1] is not None]
 
