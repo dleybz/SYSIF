@@ -21,7 +21,9 @@ class DiscreteGradientPromptSearch():
         self.prepare_model()
         self.n_generated_tokens = 2
         self.num_candidates = 5
-        self.n_population = 10
+        self.n_population = 50
+        self.temperature_norm=1e-1
+        self.topk_display = 3
 
     def prepare_model(self) -> None:
         """
@@ -44,7 +46,9 @@ class DiscreteGradientPromptSearch():
     def preprocess_data(self, dataset):
         return dataset
     
-    
+    def temp_softmax(self, x, temperature):
+        return torch.softmax(x/temperature, dim=0)
+
     """
     From Shin et al., 2020: https://arxiv.org/abs/2010.15980
     """
@@ -64,9 +68,19 @@ class DiscreteGradientPromptSearch():
             if not increase_loss: # do you want to increase or decrease the loss?
                 gradient_dot_embedding_matrix *= -1
             # sample from gradient dist
-            score_normalized = gradient_dot_embedding_matrix / gradient_dot_embedding_matrix.sum()
-            sampled_idx = torch.multinomial(score_normalized, num_candidates, replacement=True).tolist()
+            score = gradient_dot_embedding_matrix.float()
+            # score = score + score.min().abs() + 1e-9# only positive
+            # score_normalized = score / score.sum() # normalize
+            score_normalized = self.temp_softmax(score, temperature=self.temperature_norm)
+            sampled_idx = torch.multinomial(score_normalized.cpu(), num_candidates, replacement=True).tolist()
         return sampled_idx
+    
+    def save(self, population_template, cpt_iteration, savepath):
+        with open(savepath, 'a') as f_out:
+            population_set = list(set(population_template))
+            population_set.sort(reverse=True, key=lambda x:x[1])
+            savelines = '\n'.join([f'{cpt_iteration}\t[START-TEMPLATE]{d[0]}[END-TEMPLATE]\t{d[1]:.2f}' for d in population_set])+'\n'
+            f_out.write(savelines)
 
     def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size):
         # construct the prompts
@@ -92,7 +106,7 @@ class DiscreteGradientPromptSearch():
         return df_candidates
         
 
-    def train(self, initial_population, lamaset, relation, n_iterations_max, batch_size):
+    def train(self, initial_population, lamaset, relation, n_iterations_max, batch_size, savepath):
         """
         dataset is a list of tuple [(X,Y), ...]
         where X is used to fill in the template and Y is the expected next token.
@@ -104,11 +118,12 @@ class DiscreteGradientPromptSearch():
         # first, eval the initial population
         df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size)
         population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]
-        msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
-        print(f'[INITIAL POPULATION]:'+msg)
-
+        population_template.sort(reverse=True, key=lambda x:x[1])
+        msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
+        print(f'[INITIAL POPULATION]:\n'+msg)
         not_finished = True
         cpt_iteration = 0
+        self.save(population_template, cpt_iteration, savepath)
         while(not_finished):
             cpt_iteration += 1
 
@@ -151,7 +166,7 @@ class DiscreteGradientPromptSearch():
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
-                    temp[token_to_mutate] = token_candidate.item()
+                    temp[token_to_mutate] = token_candidate
                     temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
                     population_template.append((temp_text, None)) # (text_template, score)
             
@@ -161,14 +176,17 @@ class DiscreteGradientPromptSearch():
                                 + [t for t in population_template if t[1] is not None]
 
             # select the best template of the population (sampling)
-            scores = torch.tensor([d[1] for d in population_template])+ 1e-9
-            norm_scores = scores / scores.sum()
-            sampled_idx = torch.multinomial(norm_scores, self.n_population, replacement=True).tolist()
+            scores = torch.tensor([d[1] for d in population_template]) #+ 1e-9
+            score_normalized = self.temp_softmax(scores, temperature=self.temperature_norm)
+            sampled_idx = torch.multinomial(score_normalized, self.n_population, replacement=True).tolist()
             population_template = [population_template[i] for i in sampled_idx]
+            population_template.sort(reverse=True, key=lambda x:x[1])
             # print
             # if cpt_iteration%100==1:
-            msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]}' for d in population_template])
-            print(f'[i-{cpt_iteration}]:'+msg)
+            msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
+            print(f'[i-{cpt_iteration}]:\n'+msg)
+            # save templates
+            self.save(population_template, cpt_iteration, savepath)
             # stop training?
             not_finished = (cpt_iteration <= n_iterations_max)
         return machine_template
