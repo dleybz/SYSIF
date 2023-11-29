@@ -29,11 +29,11 @@ class CausalLanguageModel:
         text_generated = [self.tokenizer.decode(t) for t in tokens_generated]
         return text_generated
     
-    def generate_text(self, prompt, max_length=50, num_return_sequences=1):
-        input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
-        output = self.model.generate(input_ids, max_length=max_length, num_return_sequences=num_return_sequences, no_repeat_ngram_size=2)
-        generated_text = [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in output]
-        return generated_text
+    # def generate_text(self, prompt, max_length=50, num_return_sequences=1):
+    #     input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
+    #     output = self.model.generate(input_ids, max_length=max_length, num_return_sequences=num_return_sequences, no_repeat_ngram_size=2)
+    #     generated_text = [self.tokenizer.decode(seq, skip_special_tokens=True) for seq in output]
+    #     return generated_text
 
     def forward_per_layer(self, inputs):
         n_layers = self.get_nb_layers()
