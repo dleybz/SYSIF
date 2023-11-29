@@ -21,7 +21,7 @@ class DiscreteGradientPromptSearch():
         self.prepare_model()
         self.num_candidates = num_candidates
         self.n_population = n_population
-        self.temperature_norm=1e-1
+        self.temperature_norm=0.5e-2
         self.topk_display = 3
 
     def prepare_model(self) -> None:
@@ -45,8 +45,12 @@ class DiscreteGradientPromptSearch():
     def preprocess_data(self, dataset):
         return dataset
     
-    def temp_softmax(self, x, temperature):
-        return torch.softmax(x/temperature, dim=0)
+    def temp_softmax(self, x, temperature, discard_zeros=False):
+        if discard_zeros:
+            x_temp = torch.where(x<1e-2, -1e9, x/temperature)
+        else:
+            x_temp = x/temperature
+        return torch.softmax(x_temp, dim=0)
 
     """
     From Shin et al., 2020: https://arxiv.org/abs/2010.15980
@@ -166,8 +170,17 @@ class DiscreteGradientPromptSearch():
                 for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
                     temp[token_to_mutate] = token_candidate
-                    temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
-                    population_template.append((temp_text, None)) # (text_template, score)
+                    try:
+                        temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
+                        
+                        temp_score = None
+                        for i_popu in range(len(population_template)):
+                            if temp_text == population_template[i_popu][0]:
+                                temp_score = population_template[i_popu][1]
+                        population_template.append((temp_text, temp_score)) # (text_template, score)
+                        
+                    except TypeError: # can happens if something goes wrong with the tokenizer
+                        continue # skip it
             
             # evaluate the new templates in the population
             df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
@@ -176,7 +189,7 @@ class DiscreteGradientPromptSearch():
 
             # select the best template of the population (sampling)
             scores = torch.tensor([d[1] for d in population_template]) #+ 1e-9
-            score_normalized = self.temp_softmax(scores, temperature=self.temperature_norm)
+            score_normalized = self.temp_softmax(scores, temperature=self.temperature_norm, discard_zeros=True)
             sampled_idx = torch.multinomial(score_normalized, self.n_population, replacement=True).tolist()
             population_template = [population_template[i] for i in sampled_idx]
             population_template.sort(reverse=True, key=lambda x:x[1])
