@@ -27,8 +27,10 @@ def parse_args():
     parser.add_argument('--paraphrase_path', type=str, default='data/paraphrases/relation-paraphrases_v2.txt')
     parser.add_argument('--lama_path', type=str, default='data/opti-data/autoprompt_data')
     parser.add_argument('--output', type=str, default='')
-    parser.add_argument('--n_iterations_max', type=int, default=1000)
-
+    parser.add_argument('--n_iterations_max', type=int, default=100)
+    parser.add_argument('--n_population', type=int, default=50)
+    parser.add_argument('--num_candidates', type=int, default=5)
+    parser.add_argument('--relation', type=str, default='all')
 
     args = parser.parse_args()
     print(args)
@@ -66,10 +68,10 @@ if __name__ == "__main__":
 
     print("Starting!")
     # initialise the algo
-    autoprompt = DiscreteGradientPromptSearch(model)
+    autoprompt = DiscreteGradientPromptSearch(model, args.n_population, args.num_candidates)
 
-    # relations = lamaset.get_relations()
-    relations = ['P176',]
+    relations = lamaset.get_relations() if args.relation=='all' else [args.relation,]
+    # relations = ['P176',]
 
     for relation in relations: # in the future, run all relation in parallel in different scrips
         initial_template = paraphrases[relation]
