@@ -4,6 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 import logging
 import random
+import os
 
 from src.prompt.machine_prompt import DiscreteGradientPromptSearch
 from src.prompt.utils import parse_paraphrases
@@ -25,6 +26,7 @@ def parse_args():
     parser.add_argument('--fp16', action='store_true', help='use half precision')
     parser.add_argument('--paraphrase_path', type=str, default='data/paraphrases/relation-paraphrases_v2.txt')
     parser.add_argument('--lama_path', type=str, default='data/opti-data/autoprompt_data')
+    parser.add_argument('--output', type=str, default='')
     parser.add_argument('--n_iterations_max', type=int, default=1000)
 
 
@@ -49,10 +51,11 @@ if __name__ == "__main__":
         fast_tkn=True if not ('opt' in model_name) else False, #because of a bug in OPT
         fp16=args.fp16,
         padding_side='left')
+    model_name_parse = model_name.split('/')[-1]
 
     #load LAMA
     print("Loading LAMA...")
-    lamaset = LAMAset(args.lama_path, portion=0.5)
+    lamaset = LAMAset(args.lama_path, portion=1.0)
 
     #load human rephrases
     print("Loading human paraphrases...")
@@ -74,5 +77,6 @@ if __name__ == "__main__":
         dataset is a list of tuple [(X,Y), ...]
         where X is used to fill in the template and Y is the expected next token.
         """
-        autoprompt.train(initial_template, lamaset, relation, args.n_iterations_max, args.batch_size)
+        savepath = os.path.join(args.output,f'disc-prompt-search_{model_name_parse}_{relation}_{random_seed}.tsv') 
+        autoprompt.train(initial_template, lamaset, relation, args.n_iterations_max, args.batch_size, savepath)
         # dev set
