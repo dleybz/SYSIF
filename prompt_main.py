@@ -48,6 +48,8 @@ if __name__ == "__main__":
         fp16=args.fp16,
         padding_side='left')
 
+    # model = CausalLanguageModel("EleutherAI/pythia-1.3b-deduped",device="cuda",fast_tkn=True, fp16=False,padding_side='left')
+
     #load LAMA
     lamaset = LAMAset(args.lama_path)
 
