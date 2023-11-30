@@ -174,7 +174,6 @@ class DiscreteGradientPromptSearch():
                     # randomly pick a token which will be mutated
                     token_to_mutate = random.randrange(averaged_template_gradient.size(0))
                     sampled_tokens = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
-                    print(token_to_mutate)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
@@ -191,6 +190,7 @@ class DiscreteGradientPromptSearch():
                         continue # skip it
             
             # remove dupplicate, but keep track of them
+            print("Dup1: ", population_template)
             population_template_undup = []
             population_template_undup_count = {}
             for t in population_template:
@@ -200,7 +200,7 @@ class DiscreteGradientPromptSearch():
                 else: # dupplicate
                     population_template_undup_count[t[0]] += 1
             population_template = population_template_undup
-
+            print("Dedup1: ", population_template)
             # evaluate the new templates in the population
             df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
             population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
@@ -210,6 +210,7 @@ class DiscreteGradientPromptSearch():
             for t in population_template:
                 population_template_redup += [deepcopy(t),]*population_template_undup_count[t[0]]
             population_template = population_template_redup
+            print("Dup2: ", population_template)
 
             # select the best template of the population (sampling)
             scores = torch.tensor([d[1] for d in population_template]) #+ 1e-9
