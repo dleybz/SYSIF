@@ -164,7 +164,7 @@ class DiscreteGradientPromptSearch():
                         embeddings = self.model.get_embeddings().weight
                         embeddings_gradient = self.get_embedding_gradient()
                         # only keep the gradient of the template tokens
-                        template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), -1, embeddings.size(-1))
+                        template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), len(tokenized_template), embeddings.size(-1))
                         accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
                     averaged_template_gradient = accu_template_gradient / len(filled_data)
                     # save the embedding gradient for later
@@ -172,7 +172,7 @@ class DiscreteGradientPromptSearch():
                 # Mutation: hotflip attack (from Autoprompt)
                 with torch.no_grad():
                     # randomly pick a token which will be mutated
-                    token_to_mutate = random.randrange(averaged_template_gradient.size(0))
+                    token_to_mutate = random.randrange(len(tokenized_template))
                     sampled_tokens = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
