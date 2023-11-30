@@ -133,7 +133,7 @@ class DiscreteGradientPromptSearch():
         while(not_finished):
             cpt_iteration += 1
 
-            for (machine_template, template_score) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
+            for (machine_template, template_score) in tqdm(deepcopy(population_template), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
                 if machine_template in mem_template_info:
                     averaged_template_gradient = mem_template_info[machine_template]['gradient']
@@ -195,7 +195,7 @@ class DiscreteGradientPromptSearch():
             population_template_undup_count = {}
             for t in population_template:
                 if t not in population_template_undup:
-                    population_template_undup.append(t.deepcopy())
+                    population_template_undup.append(deepcopy(t))
                     population_template_undup_count[t] = 1
                 else: # dupplicate
                     population_template_undup_count[t] += 1
@@ -208,7 +208,7 @@ class DiscreteGradientPromptSearch():
             # redupplicate
             population_template_redup = []
             for t in population_template:
-                population_template_redup += [t.deepcopy(),]*population_template_undup_count[t]
+                population_template_redup += [deepcopy(t),]*population_template_undup_count[t]
             population_template = population_template_redup
 
             # select the best template of the population (sampling)
