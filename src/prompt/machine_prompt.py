@@ -177,6 +177,8 @@ class DiscreteGradientPromptSearch():
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
+                    print(temp)
+                    print(token_to_mutate)
                     temp[token_to_mutate] = token_candidate
                     try:
                         temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
