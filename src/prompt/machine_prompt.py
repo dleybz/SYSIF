@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 import pandas as pd
 from tqdm import tqdm
+import statistics
 
 
 class DiscreteGradientPromptSearch():
@@ -117,6 +118,7 @@ class DiscreteGradientPromptSearch():
 
         # in the first iteration, the population size is > than self.n_population
         population_template = [(t, None) for t in initial_population]
+        mem_template_info = {} # store the embedding gradient to avoid having to recompute it multiple time
 
         # first, eval the initial population
         df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 2)
@@ -130,62 +132,83 @@ class DiscreteGradientPromptSearch():
         while(not_finished):
             cpt_iteration += 1
 
-            for (machine_template, _) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
+            for (machine_template, template_score) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
-                filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
-                batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
-                tokenized_template = batches[0][0][1] # check that it is equal to batch[1][1]
-                accu_template_gradient = None
-                for batch in batches:
-                    # prepare input
-                    inputs = [torch.tensor(d[0]+d[1]) for d in batch]
-                    labels = [torch.tensor(d[2]) for d in batch]
-                    labels = [l[0] for l in labels] # only keep the first token. TODO: should we change that?
-                    # tokenize and (right) pad the inputs
-                    max_length = max([len(t) for t in inputs])
-                    inputs = torch.stack([F.pad(t, (0, max_length-len(t)), value=self.model.tokenizer.pad_token_id) for t in inputs])
-                    attention_mask = torch.where(inputs.eq(self.model.tokenizer.pad_token_id),0,1)
-                    # todo: this is hacky
-                    template_mask = torch.tensor([[0,]*len(d[0])+[1,]*len(d[1])+[0,]*(max_length-(len(d[0])+len(d[1]))) for d in batch]).bool()# 1 if the token is part of the template 0 otherwise
-                    # feed the model with the data
-                    output = self.model.forward_pass((inputs.to(self.device), attention_mask.to(self.device)), tokenize=False)
-                    pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
-                    pred_logit = output.logits[range(len(batch)), pred_id]
-                    # compute loss
-                    loss = self.nll(pred_logit, torch.tensor(labels).to(self.device)).mean()
-                    # compute gradient of loss vs input embedding
-                    loss.backward()
-                    embeddings = self.model.get_embeddings().weight
-                    embeddings_gradient = self.get_embedding_gradient()
-                    # only keep the gradient of the template tokens
-                    template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), -1, embeddings.size(-1))
-                    accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
+                if machine_template in mem_template_info:
+                    averaged_template_gradient = mem_template_info[machine_template]['gradient']
+                else:
+                    filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
+                    batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
+                    tokenized_template = batches[0][0][1] # check that it is equal to batch[1][1]
+                    accu_template_gradient = None
+                    for batch in batches:
+                        # prepare input
+                        inputs = [torch.tensor(d[0]+d[1]) for d in batch]
+                        labels = [torch.tensor(d[2]) for d in batch]
+                        labels = [l[0] for l in labels] # only keep the first token. TODO: should we change that?
+                        # tokenize and (right) pad the inputs
+                        max_length = max([len(t) for t in inputs])
+                        inputs = torch.stack([F.pad(t, (0, max_length-len(t)), value=self.model.tokenizer.pad_token_id) for t in inputs])
+                        attention_mask = torch.where(inputs.eq(self.model.tokenizer.pad_token_id),0,1)
+                        # todo: this is hacky
+                        template_mask = torch.tensor([[0,]*len(d[0])+[1,]*len(d[1])+[0,]*(max_length-(len(d[0])+len(d[1]))) for d in batch]).bool()# 1 if the token is part of the template 0 otherwise
+                        # feed the model with the data
+                        output = self.model.forward_pass((inputs.to(self.device), attention_mask.to(self.device)), tokenize=False)
+                        pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
+                        pred_logit = output.logits[range(len(batch)), pred_id]
+                        # compute loss
+                        loss = self.nll(pred_logit, torch.tensor(labels).to(self.device)).mean()
+                        # compute gradient of loss vs input embedding
+                        loss.backward()
+                        embeddings = self.model.get_embeddings().weight
+                        embeddings_gradient = self.get_embedding_gradient()
+                        # only keep the gradient of the template tokens
+                        template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), -1, embeddings.size(-1))
+                        accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
+                    averaged_template_gradient = accu_template_gradient / len(filled_data)
+                    # save the embedding gradient for later
+                    mem_template_info[machine_template] = {'gradient': averaged_template_gradient.detach().clone(), 'score': template_score}
                 # Mutation: hotflip attack (from Autoprompt)
                 with torch.no_grad():
                     # randomly pick a token which will be mutated
-                    averaged_template_gradient = accu_template_gradient / len(filled_data)
                     token_to_mutate = random.randrange(averaged_template_gradient.size(0))
                     sampled_tokens = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
+                    print(token_to_mutate)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
                     temp = tokenized_template.copy()
                     temp[token_to_mutate] = token_candidate
                     try:
                         temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
-                        
-                        temp_score = None
-                        for i_popu in range(len(population_template)):
-                            if temp_text == population_template[i_popu][0]:
-                                temp_score = population_template[i_popu][1]
+                        # check if we already know the score of the mutated template
+                        if temp_text in mem_template_info:
+                            temp_score = mem_template_info[temp_text]['score']
+                        else:
+                            temp_score = None
                         population_template.append((temp_text, temp_score)) # (text_template, score)
-                        
                     except TypeError: # can happens if something goes wrong with the tokenizer
                         continue # skip it
             
+            # remove dupplicate, but keep track of them
+            population_template_undup = []
+            population_template_undup_count = {}
+            for t in population_template:
+                if t not in population_template_undup:
+                    population_template_undup.append(t.copy())
+                    population_template_undup_count[t] = 1
+                else: # dupplicate
+                    population_template_undup_count[t] += 1
+            population_template = population_template_undup
+
             # evaluate the new templates in the population
             df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
             population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in population_template if t[1] is not None]
+            # redupplicate
+            population_template_redup = []
+            for t in population_template:
+                population_template_redup += [t.copy(),]*population_template_undup_count[t]
+            population_template = population_template_redup
 
             # select the best template of the population (sampling)
             scores = torch.tensor([d[1] for d in population_template]) #+ 1e-9
@@ -194,13 +217,19 @@ class DiscreteGradientPromptSearch():
             population_template = [population_template[i] for i in sampled_idx]
             population_template.sort(reverse=True, key=lambda x:x[1])
             # print
-            # if cpt_iteration%100==1:
             msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
             print(f'[i-{cpt_iteration}]:\n'+msg)
             # save templates
             self.save(population_template, cpt_iteration, savepath)
             # stop training?
             not_finished = (cpt_iteration <= n_iterations_max)
+            # release memory, if a template has a score lower or equal to the median of the current population
+            if cpt_iteration%10==0:
+                med_score = statistics.median([s[1] for s in population_template])
+                for t in mem_template_info:
+                    if mem_template_info[t]['score'] <= med_score:
+                        del mem_template_info[t]
+
         return machine_template
 
 
