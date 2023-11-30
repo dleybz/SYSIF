@@ -133,7 +133,7 @@ class DiscreteGradientPromptSearch():
         while(not_finished):
             cpt_iteration += 1
 
-            for (machine_template, template_score) in tqdm(population_template.deepcopy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
+            for (machine_template, template_score) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
                 if machine_template in mem_template_info:
                     averaged_template_gradient = mem_template_info[machine_template]['gradient']
@@ -177,7 +177,7 @@ class DiscreteGradientPromptSearch():
                     print(token_to_mutate)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
-                    temp = tokenized_template.deepcopy()
+                    temp = tokenized_template.copy()
                     temp[token_to_mutate] = token_candidate
                     try:
                         temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
