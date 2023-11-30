@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import pandas as pd
 from tqdm import tqdm
 import statistics
+from deepcopy import deepdeepcopy
 
 
 class DiscreteGradientPromptSearch():
@@ -132,7 +133,7 @@ class DiscreteGradientPromptSearch():
         while(not_finished):
             cpt_iteration += 1
 
-            for (machine_template, template_score) in tqdm(population_template.copy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
+            for (machine_template, template_score) in tqdm(population_template.deepcopy(), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                 
                 if machine_template in mem_template_info:
                     averaged_template_gradient = mem_template_info[machine_template]['gradient']
@@ -176,7 +177,7 @@ class DiscreteGradientPromptSearch():
                     print(token_to_mutate)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
-                    temp = tokenized_template.copy()
+                    temp = tokenized_template.deepcopy()
                     temp[token_to_mutate] = token_candidate
                     try:
                         temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
@@ -194,7 +195,7 @@ class DiscreteGradientPromptSearch():
             population_template_undup_count = {}
             for t in population_template:
                 if t not in population_template_undup:
-                    population_template_undup.append(t.copy())
+                    population_template_undup.append(t.deepcopy())
                     population_template_undup_count[t] = 1
                 else: # dupplicate
                     population_template_undup_count[t] += 1
@@ -207,7 +208,7 @@ class DiscreteGradientPromptSearch():
             # redupplicate
             population_template_redup = []
             for t in population_template:
-                population_template_redup += [t.copy(),]*population_template_undup_count[t]
+                population_template_redup += [t.deepcopy(),]*population_template_undup_count[t]
             population_template = population_template_redup
 
             # select the best template of the population (sampling)
