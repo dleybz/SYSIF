@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import pandas as pd
 from tqdm import tqdm
 import statistics
-from deepcopy import deepdeepcopy
+from copy import deepcopy
 
 
 class DiscreteGradientPromptSearch():
