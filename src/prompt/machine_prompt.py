@@ -196,9 +196,9 @@ class DiscreteGradientPromptSearch():
             for t in population_template:
                 if t not in population_template_undup:
                     population_template_undup.append(deepcopy(t))
-                    population_template_undup_count[t] = 1
+                    population_template_undup_count[t[0]] = 1
                 else: # dupplicate
-                    population_template_undup_count[t] += 1
+                    population_template_undup_count[t[0]] += 1
             population_template = population_template_undup
 
             # evaluate the new templates in the population
@@ -208,7 +208,7 @@ class DiscreteGradientPromptSearch():
             # redupplicate
             population_template_redup = []
             for t in population_template:
-                population_template_redup += [deepcopy(t),]*population_template_undup_count[t]
+                population_template_redup += [deepcopy(t),]*population_template_undup_count[t[0]]
             population_template = population_template_redup
 
             # select the best template of the population (sampling)
