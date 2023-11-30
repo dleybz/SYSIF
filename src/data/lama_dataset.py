@@ -70,9 +70,9 @@ class LAMAset:
         this_set = this_set[this_set['predicate_id']==relation]
         pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
         
-        core_tokenized = tokenizer.encode(template.replace('[X]', '').strip())
+        core_tokenized = tokenizer.encode(template.replace('[X]', '').strip(), add_special_tokens=False)
         # TODO: adding the space before obj:-> this is very Pythia specific, change it
-        filled_data = [(tokenizer.encode(subj), core_tokenized, tokenizer.encode(' '+obj)) for subj, obj in pair_list]
+        filled_data = [(tokenizer.encode(subj), core_tokenized, tokenizer.encode(' '+obj, add_special_tokens=False)) for subj, obj in pair_list]
         return filled_data
     
     def evaluate(self):

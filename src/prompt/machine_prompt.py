@@ -179,7 +179,7 @@ class DiscreteGradientPromptSearch():
                     temp = tokenized_template.copy()
                     temp[token_to_mutate] = token_candidate
                     try:
-                        temp_text = '[X] '+self.model.tokenizer.decode(temp) + ' [Y]'
+                        temp_text = '[X] '+self.model.tokenizer.decode(temp)+ ' [Y]'
                         # check if we already know the score of the mutated template
                         if temp_text in mem_template_info:
                             temp_score = mem_template_info[temp_text]['score']
