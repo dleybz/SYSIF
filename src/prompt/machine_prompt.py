@@ -27,7 +27,7 @@ class DiscreteGradientPromptSearch():
         self.temperature_norm=2e-1
         self.topk_display = 3
         self.n_rounds = 3
-        self.p_flip = 0.3
+        self.p_flip = 0.4
 
     def prepare_model(self) -> None:
         """
@@ -179,8 +179,8 @@ class DiscreteGradientPromptSearch():
                         len_tokenized_template = len(tokenized_template)
                         for idx_tkn in range(len_tokenized_template):
                             p = random.random()
-                            if p < self.p_flip:
-                                sampled_tokens = self.hotflip_attack(averaged_template_gradient[idx_tkn], embeddings, num_candidates=math.ceil(self.num_candidates/(2**round)))
+                            if p < (self.p_flip/(2**round)):
+                                sampled_tokens = self.hotflip_attack(averaged_template_gradient[idx_tkn], embeddings, num_candidates=self.num_candidates)
                                 # Add mutated templates to the population
                                 for token_candidate in sampled_tokens:
                                     temp = tokenized_template.copy()
