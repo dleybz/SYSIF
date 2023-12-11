@@ -137,7 +137,7 @@ class DiscreteGradientPromptSearch():
                 
                 if machine_template in mem_template_info:
                     averaged_template_gradient = mem_template_info[machine_template]['gradient']
-                    _, len_tokenized_template, _ = averaged_template_gradient.shape
+                    len_tokenized_template, _ = averaged_template_gradient.shape
                 else:
                     filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
                     batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
