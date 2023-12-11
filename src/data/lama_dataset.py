@@ -66,14 +66,18 @@ class LAMAset:
             # troncate the template by removing [Y]
             template = template[:-3]
 
-        this_set = self.dataset[self.dataset['set']==set]
-        this_set = this_set[this_set['predicate_id']==relation]
-        pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
-        
         core_tokenized = tokenizer.encode(template.replace('[X]', '').strip(), add_special_tokens=False)
-        # TODO: adding the space before obj:-> this is very Pythia specific, change it
-        filled_data = [(tokenizer.encode(subj), core_tokenized, tokenizer.encode(' '+obj, add_special_tokens=False)) for subj, obj in pair_list]
-        return filled_data
+
+        filled_data = None   
+        if relation is not None:
+            this_set = self.dataset[self.dataset['set']==set]
+            this_set = this_set[this_set['predicate_id']==relation]
+            pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
+            
+            # TODO: adding the space before obj:-> this is very Pythia specific, change it
+            filled_data = [(tokenizer.encode(subj), core_tokenized, tokenizer.encode(' '+obj, add_special_tokens=False)) for subj, obj in pair_list]
+        
+        return core_tokenized, filled_data
     
     def evaluate(self):
         return None
