@@ -137,11 +137,12 @@ class DiscreteGradientPromptSearch():
                 
                 if machine_template in mem_template_info:
                     averaged_template_gradient = mem_template_info[machine_template]['gradient']
+                    _, len_tokenized_template, _ = averaged_template_gradient.shape
                 else:
                     filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
                     batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
                     tokenized_template = batches[0][0][1] # check that it is equal to batch[1][1]
-                    print('tokenized_template: ', tokenized_template)
+                    len_tokenized_template = len(tokenized_template)
                     accu_template_gradient = None
                     for batch in batches:
                         # prepare input
@@ -155,7 +156,6 @@ class DiscreteGradientPromptSearch():
                         # todo: this is hacky
                         template_mask = torch.tensor([[0,]*len(d[0])+[1,]*len(d[1])+[0,]*(max_length-(len(d[0])+len(d[1]))) for d in batch]).bool()# 1 if the token is part of the template 0 otherwise
                         # feed the model with the data
-                        print('inputs: ', inputs)
                         output = self.model.forward_pass((inputs.to(self.device), attention_mask.to(self.device)), tokenize=False)
                         pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
                         pred_logit = output.logits[range(len(batch)), pred_id]
@@ -174,8 +174,7 @@ class DiscreteGradientPromptSearch():
                 # Mutation: hotflip attack (from Autoprompt)
                 with torch.no_grad():
                     # randomly pick a token which will be mutated
-                    print('len(tokenized_template): ', len(tokenized_template))
-                    token_to_mutate = random.randrange(len(tokenized_template))
+                    token_to_mutate = random.randrange(len_tokenized_template)
                     sampled_tokens = self.hotflip_attack(averaged_template_gradient[token_to_mutate], embeddings, num_candidates=self.num_candidates)
                 # Add mutated templates to the population
                 for token_candidate in sampled_tokens:
