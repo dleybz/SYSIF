@@ -23,7 +23,7 @@ class DiscreteGradientPromptSearch():
         self.prepare_model()
         self.num_candidates = num_candidates
         self.n_population = n_population
-        self.temperature_norm=0.5e-2
+        self.temperature_norm=0.2e-2
         self.topk_display = 3
 
     def prepare_model(self) -> None:
