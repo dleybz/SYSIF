@@ -24,7 +24,7 @@ class DiscreteGradientPromptSearch():
         self.prepare_model()
         self.num_candidates = num_candidates
         self.n_population = n_population
-        self.temperature_norm=2e-1
+        self.temperature_norm=1e-2
         self.topk_display = 3
         self.n_rounds = 3
         self.p_flip = 0.4
@@ -87,17 +87,18 @@ class DiscreteGradientPromptSearch():
         with open(savepath, 'a') as f_out:
             population_set = list(set(population_template))
             population_set.sort(reverse=True, key=lambda x:x[1])
-            savelines = '\n'.join([f'{cpt_iteration}\t[START-TEMPLATE]{d[0]}[END-TEMPLATE]\t{d[1]:.2f}' for d in population_set])+'\n'
+            savelines = '\n'.join([f'{cpt_iteration}\t{d[2]}\t[START-TEMPLATE]{d[0]}[END-TEMPLATE]\t{d[1]:.2f}' for d in population_set])+'\n'
             f_out.write(savelines)
 
     def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size, n_generated_tokens):
         # construct the prompts
         df_candidates = []
-        for tid, this_template in enumerate(template_candidates):
+        for (this_template, tid) in template_candidates:
             filled_list = lamaset.fill_template(relation, this_template, set='dev')
             df_temp = pd.DataFrame()
             df_temp['prompt'] = [tp[0] for tp in filled_list]
             df_temp['label'] = [tp[1] for tp in filled_list]
+            df_temp['tid'] = [tid,] * len(df_temp)
             # df_temp['relation'] = [relation,] * len(df_temp)
             df_temp['template'] = [this_template,] * len(df_temp)
             df_candidates.append(df_temp)
@@ -121,27 +122,33 @@ class DiscreteGradientPromptSearch():
         """
 
         # in the first iteration, the population size is > than self.n_population
-        population_template = [(t, None) for t in initial_population]
+        # (template, score, template_id)
+        # the template_id is constructing by concatenanting the parent id + a new number
+        # here the parent id is R (root).
+        population_template = [(t, None, f'R-{t_id}') for t_id, t in enumerate(initial_population)]
         mem_template_info = {} # store the embedding gradient to avoid having to recompute it multiple time
 
         # first, eval the initial population
-        df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 2)
-        population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]
+        df_eval = self.evaluate_candidates([(t[0], t[2]) for t in population_template if t[1] is None], lamaset, relation, batch_size, 2)
+        population_template = [(d[0], d[2], d[1]) for d in df_eval.groupby(['template','tid'])['correct'].mean().reset_index().values.tolist()]
         population_template.sort(reverse=True, key=lambda x:x[1])
-        msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
+        msg = '\n'.join([f'[{d[2]}] T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
         print(f'[INITIAL POPULATION]:\n'+msg)
         not_finished = True
         cpt_iteration = 0
         self.save(population_template, cpt_iteration, savepath)
+        # template count
+        tcpt = len(population_template)
+
         while(not_finished):
             cpt_iteration += 1
 
             for round in range(self.n_rounds):
 
-                for (machine_template, template_score) in tqdm(deepcopy(population_template), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
+                for (machine_template, template_score, tid) in tqdm(deepcopy(population_template), desc=f"[TRAIN][it:{cpt_iteration}] Computing gradient for each template of the population",file=sys.stdout):
                     
-                    if machine_template in mem_template_info:
-                        averaged_template_gradient = mem_template_info[machine_template]['gradient']
+                    if tid in mem_template_info:
+                        averaged_template_gradient = mem_template_info[tid]['gradient']
                         tokenized_template, _ = lamaset.fill_template_and_tokenize(None, machine_template, self.model.tokenizer) # first arg to None to just get the tokenized template
                     else:
                         tokenized_template, filled_data = lamaset.fill_template_and_tokenize(relation, machine_template, self.model.tokenizer, set='train')
@@ -173,7 +180,7 @@ class DiscreteGradientPromptSearch():
                             accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
                         averaged_template_gradient = accu_template_gradient / len(filled_data)
                         # save the embedding gradient for later
-                        mem_template_info[machine_template] = {'gradient': averaged_template_gradient.detach().clone(), 'score': template_score}
+                        mem_template_info[tid] = {'gradient': averaged_template_gradient.detach().clone(), 'score': template_score}
                     # Mutation: hotflip attack (from Autoprompt)
                     with torch.no_grad():
                         len_tokenized_template = len(tokenized_template)
@@ -192,7 +199,8 @@ class DiscreteGradientPromptSearch():
                                             temp_score = mem_template_info[temp_text]['score']
                                         else:
                                             temp_score = None
-                                        population_template.append((temp_text, temp_score)) # (text_template, score)
+                                        tcpt += 1 # increase template count
+                                        population_template.append((temp_text, temp_score, f'{tid}-{tcpt}')) # (text_template, score)
                                     except TypeError: # can happens if something goes wrong with the tokenizer
                                         continue # skip it
             
@@ -207,8 +215,8 @@ class DiscreteGradientPromptSearch():
                     population_template_undup_count[t[0]] += 1
             population_template = population_template_undup
             # evaluate the new templates in the population
-            df_eval = self.evaluate_candidates([t[0] for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
-            population_template = [(d[0], d[1]) for d in df_eval.groupby('template')['correct'].mean().reset_index().values.tolist()]\
+            df_eval = self.evaluate_candidates([(t[0], t[2]) for t in population_template if t[1] is None], lamaset, relation, batch_size, 1)
+            population_template = [(d[0], d[2], d[1]) for d in df_eval.groupby(['template','tid'])['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in population_template if t[1] is not None]
             # redupplicate
             population_template_redup = []
@@ -223,7 +231,7 @@ class DiscreteGradientPromptSearch():
             population_template = [population_template[i] for i in sampled_idx]
             population_template.sort(reverse=True, key=lambda x:x[1])
             # print
-            msg = '\n'.join([f'T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
+            msg = '\n'.join([f'[{d[2]}] T:__{d[0]}__. S:{d[1]:.2f}' for d in population_template[:self.topk_display]])
             print(f'[i-{cpt_iteration}]:\n'+msg)
             # save templates
             self.save(population_template, cpt_iteration, savepath)
@@ -231,9 +239,10 @@ class DiscreteGradientPromptSearch():
             not_finished = (cpt_iteration <= n_iterations_max)
             # release memory, if a template has a score lower or equal to the median of the current population
             if cpt_iteration%10==0:
-                med_score = statistics.median([s[1] for s in population_template])
+                med_score = statistics.median([s[1] for s in population_template if s[1] is not None])
                 for t in list(mem_template_info.keys()):
-                    if mem_template_info[t]['score'] <= med_score:
+                    # hacky: control why we sometimes have none
+                    if mem_template_info[t]['score'] is None or mem_template_info[t]['score'] <= med_score:
                         del mem_template_info[t]
 
         return machine_template
