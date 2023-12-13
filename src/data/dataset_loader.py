@@ -54,6 +54,8 @@ def batchify(datalist, batch_size, drop_last, tokenizer=None, output_text=False)
         if not len(batches[-1]) == batch_size:
             batches = batches[:-1]
 
+    n_batches = len(batches)
+
     # tokenize
     if tokenizer is not None:
         batches = [tokenizer(batch, padding=True, return_tensors="pt") for batch in batches]
@@ -63,7 +65,7 @@ def batchify(datalist, batch_size, drop_last, tokenizer=None, output_text=False)
         attention_masks = [torch.ones_like(batch) for batch in batches]
         batches = zip(batches, attention_masks)
 
-    return batches, len(batches)
+    return batches, n_batches
 
 def tokenize_slice_batch(dataset: Dataset, tokenizer, batch_size, window_size=None, window_stride=None, drop_last=False):
     # process data: tokenize/slice/batch
