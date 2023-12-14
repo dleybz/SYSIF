@@ -95,7 +95,7 @@ class DiscreteGradientPromptSearch():
             savelines = '\n'.join([f'{cpt_iteration}\t{d[2]}\t[START-TEMPLATE]{d[0]}[END-TEMPLATE]\t{d[1]:.2f}' for d in population_set])+'\n'
             f_out.write(savelines)
 
-    def deduplicate_templates(template_candidates):
+    def deduplicate_templates(self, template_candidates):
         population_template_undup = []
         population_template_undup_count = {}
         for t in template_candidates:
@@ -107,7 +107,7 @@ class DiscreteGradientPromptSearch():
         template_candidates = population_template_undup
         return template_candidates, population_template_undup_count
     
-    def deduplicate_templates(self, template_candidates, population_template_undup_count):
+    def reduplicate_templates(self, population_template, population_template_undup_count):
         population_template_redup = []
         for t in population_template:
             population_template_redup += [deepcopy(t),]*population_template_undup_count[t[0]]
@@ -122,10 +122,11 @@ class DiscreteGradientPromptSearch():
         # construct the prompts
         df_candidates = []
         for (this_template, tid) in template_to_evaluate:
-            filled_list = lamaset.fill_template(relation, this_template, set='dev')
+            filled_list = lamaset.fill_template(relation, this_template, set='dev', return_subj=True)
             df_temp = pd.DataFrame()
             df_temp['prompt'] = [tp[0] for tp in filled_list]
             df_temp['label'] = [tp[1] for tp in filled_list]
+            df_temp['subject'] = [tp[2] for tp in filled_list]
             df_temp['tid'] = [tid,] * len(df_temp)
             # df_temp['relation'] = [relation,] * len(df_temp)
             df_temp['template'] = [this_template,] * len(df_temp)
@@ -148,7 +149,7 @@ class DiscreteGradientPromptSearch():
         population_template = [(d[0], d[2], d[1]) for d in df_candidates.groupby(['template','tid'])['correct'].mean().reset_index().values.tolist()]\
                                 + [t for t in template_candidates if t[1] is not None]
         # redupplicate
-        population_template = self.deduplicate_templates(template_candidates, population_template_undup_count)
+        population_template = self.reduplicate_templates(population_template, population_template_undup_count)
         
         if return_pred:
             return population_template, df_candidates
@@ -282,9 +283,10 @@ class DiscreteGradientPromptSearch():
         return population_template
 
 class OneTokenGradientPromptSearch(DiscreteGradientPromptSearch):
-    def __init__(self, model: CausalLanguageModel, n_population, num_candidates, mode) -> None:
-        super().__init__(self, model, 1, num_candidates, n_rounds=1)
+    def __init__(self, model: CausalLanguageModel, num_candidates, mode) -> None:
+        super().__init__(model, 1, num_candidates, n_rounds=1)
         self.mode = mode # hot, neutral
+        self.topk_templates=25
 
     def search(self, human_templates, savepath, lamaset, relation, batch_size):
         """
@@ -361,15 +363,23 @@ class OneTokenGradientPromptSearch(DiscreteGradientPromptSearch):
                         temp[idx_tkn] = token_candidate
                         try:
                             temp_text = '[X] '+self.model.tokenizer.decode(temp)+ ' [Y]'
-                            template_count += 1 # increase template count
-                            candidates_templates.append((temp_text, None, f'{h_tid}-{template_count}')) # (text_template, score)
+                            tcpt += 1 # increase template count
+                            candidates_templates.append((temp_text, None, f'{h_tid}-{tcpt}')) # (text_template, score)
                         except TypeError: # can happens if something goes wrong with the tokenizer
                             continue # skip it
 
-            candidates_templates, df_candidates = self.evaluate_candidates(self, candidates_templates, lamaset, relation, batch_size, 2, return_red=True)
+            candidates_templates, df_candidates = self.evaluate_candidates(candidates_templates, lamaset, relation, batch_size, 2, return_pred=True)
 
             # compare each candidate's predictions with the human template prediction:
-
+            df_candidates['human_pred'] = df_candidates.apply(lambda r: df_human[df_human['label']==r['label']][df_human['subject']==r['subject']]['pred'].item(), axis=1)
+            df_candidates['same_pred'] = df_candidates['human_pred'] == df_candidates['pred']
+            candidates_templates = [(d[0], d[2], d[3], d[1]) for d in df_candidates.groupby(['template','tid'])[['correct', 'same_pred']].mean().reset_index().values.tolist()]
+            # filter
+            if self.mode=='hot':
+                candidates_templates.sort(reverse=True, key=lambda x:x[1])
+            elif self.mode=='neutral':
+                candidates_templates.sort(reverse=True, key=lambda x:x[2])
+            candidates_templates = candidates_templates[:self.topk_template]
             # print and save
             self.print_population(candidates_templates)
             self.save(candidates_templates, h_tid, savepath)

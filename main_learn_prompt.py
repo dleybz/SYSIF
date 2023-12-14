@@ -6,7 +6,7 @@ import logging
 import random
 import os
 
-from src.prompt.machine_prompt import DiscreteGradientPromptSearch
+from src.prompt.machine_prompt import DiscreteGradientPromptSearch, OneTokenGradientPromptSearch
 from src.prompt.utils import parse_paraphrases
 from src.data.lama_dataset import LAMAset
 from src.utils.init_utils import init_device, init_random_seed
@@ -67,11 +67,27 @@ if __name__ == "__main__":
 
 
     print("Starting!")
-    # initialise the algo
-    autoprompt = DiscreteGradientPromptSearch(model, args.n_population, args.num_candidates, n_rounds=3)
+
 
     relations = lamaset.get_relations() if args.relation=='all' else [args.relation,]
-    # relations = ['P176',]
+    relations = ['P176',]
+
+
+    # initialise the algo
+    oneTokSearch = OneTokenGradientPromptSearch(model, 2, mode='hot')
+    for relation in relations: # in the future, run all relation in parallel in different scrips
+        initial_template = [paraphrases[relation][0],]
+        """
+        dataset is a list of tuple [(X,Y), ...]
+        where X is used to fill in the template and Y is the expected next token.
+        """
+        savepath = os.path.join(args.output,f'one-tok-search_{model_name_parse}_{relation}_{random_seed}.tsv') 
+        oneTokSearch.search(initial_template, savepath, lamaset, relation, args.batch_size)
+
+    exit()
+
+    # initialise the algo
+    autoprompt = DiscreteGradientPromptSearch(model, args.n_population, args.num_candidates, n_rounds=3)
 
     for relation in relations: # in the future, run all relation in parallel in different scrips
         initial_template = paraphrases[relation]
