@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     print("Starting!")
     # initialise the algo
-    autoprompt = DiscreteGradientPromptSearch(model, args.n_population, args.num_candidates)
+    autoprompt = DiscreteGradientPromptSearch(model, args.n_population, args.num_candidates, n_rounds=3)
 
     relations = lamaset.get_relations() if args.relation=='all' else [args.relation,]
     # relations = ['P176',]

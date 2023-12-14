@@ -80,15 +80,7 @@ if __name__ == "__main__":
         except KeyError:
             logging.warning(f'[EVALUATION] Paraphrase does not contains the relation {relation}. Skipping it.')
     df_prompts = pd.concat(df_prompts)
-
-    # while(True):
-    #     df_sample = df_prompts.sample(10)
-    #     print("========== Samples:")
-    #     print(df_sample)
-    #     print("========== Samples:")
-    #     input('')
-
-
+    
     # feed prompts to the LM and gather predictions
     prompt_list = df_prompts['prompt'].values.tolist()
     pred_list = []
