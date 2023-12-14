@@ -3,6 +3,7 @@ sys.path.append('../')
 import random
 import string
 import math
+import logging
 from src.prompt.utils import parse_paraphrases
 from src.data.lama_dataset import LAMAset
 from src.data.dataset_loader import batchify
@@ -67,7 +68,8 @@ class DiscreteGradientPromptSearch():
                    embedding_matrix,
                    increase_loss=False,
                    num_candidates=1,
-                   filter=None):
+                   filter=None,
+                   replacement=True):
         """Returns the top candidate replacements."""
         with torch.no_grad():
             gradient_dot_embedding_matrix = torch.matmul(
@@ -83,7 +85,7 @@ class DiscreteGradientPromptSearch():
             # score = score + score.min().abs() + 1e-9# only positive
             # score_normalized = score / score.sum() # normalize
             score_normalized = self.temp_softmax(score, temperature=self.temperature_norm)
-            sampled_idx = torch.multinomial(score_normalized.cpu(), num_candidates, replacement=True).tolist()
+            sampled_idx = torch.multinomial(score_normalized.cpu(), num_candidates, replacement=replacement).tolist()
         return sampled_idx
     
     def save(self, population_template, cpt_iteration, savepath):
@@ -112,7 +114,7 @@ class DiscreteGradientPromptSearch():
         population_template = population_template_redup
         return population_template
 
-    def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size, n_generated_tokens):
+    def evaluate_candidates(self, template_candidates, lamaset, relation, batch_size, n_generated_tokens, return_pred=False):
         # remove dupplicates, but keep track of them
         template_candidates, population_template_undup_count = self.deduplicate_templates(template_candidates)
         # select those which have to be evaluated
@@ -147,8 +149,11 @@ class DiscreteGradientPromptSearch():
                                 + [t for t in template_candidates if t[1] is not None]
         # redupplicate
         population_template = self.deduplicate_templates(template_candidates, population_template_undup_count)
-
-        return population_template
+        
+        if return_pred:
+            return population_template, df_candidates
+        else:
+            return population_template
         
     def select_candidates(self, population_template):
         scores = torch.tensor([d[1] for d in population_template]) #+ 1e-9
@@ -276,7 +281,98 @@ class DiscreteGradientPromptSearch():
 
         return population_template
 
+class OneTokenGradientPromptSearch(DiscreteGradientPromptSearch):
+    def __init__(self, model: CausalLanguageModel, n_population, num_candidates, mode) -> None:
+        super().__init__(self, model, 1, num_candidates, n_rounds=1)
+        self.mode = mode # hot, neutral
 
+    def search(self, human_templates, savepath, lamaset, relation, batch_size):
+        """
+        dataset is a list of tuple [(X,Y), ...]
+        where X is used to fill in the template and Y is the expected next token.
+        """
+
+        # Initialise the population with human templates
+        human_templates = [(t, None, f'R-{t_id}') for t_id, t in enumerate(human_templates)]
+
+        # first, eval the initial population
+        human_templates, df_human = self.evaluate_candidates(human_templates, lamaset, relation, batch_size, 2, return_pred=True)
+        
+        # filter to only keep template with accuracy > 10
+        human_templates = [h for h in human_templates if h[1]>0.1]
+        
+        self.print_population(human_templates)
+
+        if len(human_templates)==0:
+            logging.warning('[One token search] No human template is accurate enough. Stop.')
+            return None
+
+        # template count
+        tcpt = len(human_templates)
+
+        for (human, h_score, h_tid) in human_templates:
+
+            self.save([(human, h_score, h_tid),], h_tid, savepath)
+
+            tokenized_template, filled_data = lamaset.fill_template_and_tokenize(relation, human, self.model.tokenizer, set='train')
+            batches = [filled_data[i:i+batch_size] for i in range(0,len(filled_data),batch_size)]
+            accu_template_gradient = None
+            for batch in batches:    
+                # prepare input
+                inputs = [torch.tensor(d[0]+d[1]) for d in batch]
+                labels = [torch.tensor(d[2]) for d in batch]
+                labels = [l[0] for l in labels] # only keep the first token. TODO: should we change that?
+                # tokenize and (right) pad the inputs
+                max_length = max([len(t) for t in inputs])
+                inputs = torch.stack([F.pad(t, (0, max_length-len(t)), value=self.model.tokenizer.pad_token_id) for t in inputs])
+                attention_mask = torch.where(inputs.eq(self.model.tokenizer.pad_token_id),0,1)
+                # todo: this is hacky
+                template_mask = torch.tensor([[0,]*len(d[0])+[1,]*len(d[1])+[0,]*(max_length-(len(d[0])+len(d[1]))) for d in batch]).bool()# 1 if the token is part of the template 0 otherwise
+                # feed the model with the data
+                output = self.model.forward_pass((inputs.to(self.device), attention_mask.to(self.device)), tokenize=False)
+                pred_id = attention_mask.sum(-1)-1 # be sure that padding is 'right'
+                pred_logit = output.logits[range(len(batch)), pred_id]
+
+                if self.mode=='hot':
+                    targets = torch.tensor(labels).to(self.device)
+                elif self.mode=='neutral':
+                    targets = torch.argmax(pred_logit, dim=-1) # model's predictions
+
+                # compute loss
+                loss = self.nll(pred_logit, targets).mean()
+                # compute gradient of loss vs input embedding
+                loss.backward()
+                embeddings = self.model.get_embeddings().weight
+                embeddings_gradient = self.get_embedding_gradient()
+                # only keep the gradient of the template tokens
+                template_gradient = torch.masked_select(embeddings_gradient, template_mask.unsqueeze(-1).to(self.device)).view(len(batch), len(tokenized_template), embeddings.size(-1))
+                accu_template_gradient = (accu_template_gradient + template_gradient.sum(0)) if accu_template_gradient is not None else template_gradient.sum(0)
+            averaged_template_gradient = accu_template_gradient / len(filled_data)
+            
+            # Mutation: hotflip attack (from Autoprompt)
+            candidates_templates = []
+            with torch.no_grad():
+                len_tokenized_template = len(tokenized_template)
+                for idx_tkn in range(len_tokenized_template):
+                    sampled_tokens = self.hotflip_attack(averaged_template_gradient[idx_tkn], embeddings, num_candidates=self.num_candidates, replacement=False)
+                    # Add mutated templates to the population
+                    for token_candidate in sampled_tokens:
+                        temp = tokenized_template.copy()
+                        temp[idx_tkn] = token_candidate
+                        try:
+                            temp_text = '[X] '+self.model.tokenizer.decode(temp)+ ' [Y]'
+                            template_count += 1 # increase template count
+                            candidates_templates.append((temp_text, None, f'{h_tid}-{template_count}')) # (text_template, score)
+                        except TypeError: # can happens if something goes wrong with the tokenizer
+                            continue # skip it
+
+            candidates_templates, df_candidates = self.evaluate_candidates(self, candidates_templates, lamaset, relation, batch_size, 2, return_red=True)
+
+            # compare each candidate's predictions with the human template prediction:
+
+            # print and save
+            self.print_population(candidates_templates)
+            self.save(candidates_templates, h_tid, savepath)
 
 class EvoMachinePrompt():
     def __init__(self, mutate_function, crossover_function, fitness_function) -> None:
