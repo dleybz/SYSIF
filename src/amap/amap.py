@@ -262,11 +262,12 @@ class LMamap:
         return res
 
     def load(self, datafolder, dataset, window_size) -> None:
+        dataset_name = dataset.split('/')[-1]
         pickle_files = [f for f in os.listdir(datafolder) if f.endswith('.pickle')]
         model_name = self.model.model_name.split('/')[-1]
         print('[AMAP] Loading files...')
         for f in pickle_files:
-            if dataset in f and model_name in f:
+            if dataset_name in f and model_name in f:
                 if f.startswith('amap'):
                     with open(os.path.join(datafolder,f), "rb") as input_file:
                         self.amap = pickle.load(input_file)

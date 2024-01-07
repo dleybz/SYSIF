@@ -48,7 +48,7 @@ if __name__ == "__main__":
         fast_tkn=True if not ('opt' in model_name) else False, #because of a bug in OPT
         fp16=args.fp16)
 
-    mode = ['input',]# 'output']
+    mode = ['input', 'output']
 
     amapper = LMamap(model=model,
                      device=args.device,
@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
         # Save with pickle
         print('Saving stats...')
-        exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset}-N{args.n_samples}-Wd{args.window_size}-{random_seed}'
+        exp_name = f'{args.model_name.split("/")[-1]}-{args.dataset.split("/")[-1]}-N{args.n_samples}-Wd{args.window_size}-{random_seed}'
         if args.pos:
             exp_name += '_position'
         exp_name += '_'+warning_flag

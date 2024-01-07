@@ -27,7 +27,7 @@ class LAMAset:
 
         return None
 
-    def fill_template(self, relation, template, set='train'):
+    def fill_template(self, relation, template, set='train', return_subj=False):
         """
         return a list of tuple (template(object), subject)
 
@@ -47,7 +47,10 @@ class LAMAset:
         this_set = this_set[this_set['predicate_id']==relation]
         pair_list = this_set[['sub_label', 'obj_label']].values.tolist()
         
-        filled_data = [(template.replace('[X]', subj).strip(), obj) for subj, obj in pair_list]
+        if return_subj:
+            filled_data = [(template.replace('[X]', subj).strip(), obj, subj) for subj, obj in pair_list]
+        else:
+            filled_data = [(template.replace('[X]', subj).strip(), obj) for subj, obj in pair_list]
         return filled_data
 
     def fill_template_and_tokenize(self, relation, template, tokenizer, set='train'):

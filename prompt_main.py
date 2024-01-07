@@ -70,24 +70,17 @@ if __name__ == "__main__":
                 # this_template = f'Label: {lama_label}. '+this_template
                 # this_template = f'Source: Wikipedia. '+this_template
                 # fill the template with LAMA's objects
-                filled_list = lamaset.fill_template(relation, this_template, set='dev')
+                filled_list = lamaset.fill_template(relation, this_template, set='dev',return_subj=True)
                 df_temp = pd.DataFrame()
                 df_temp['prompt'] = [tp[0] for tp in filled_list]
                 df_temp['label'] = [tp[1] for tp in filled_list]
+                df_temp['subject'] = [tp[2] for tp in filled_list]
                 df_temp['relation'] = [relation,] * len(df_temp)
                 df_temp['template_id'] = [f'{relation}_{tid}',] * len(df_temp)
                 df_prompts.append(df_temp)
         except KeyError:
             logging.warning(f'[EVALUATION] Paraphrase does not contains the relation {relation}. Skipping it.')
     df_prompts = pd.concat(df_prompts)
-
-    # while(True):
-    #     df_sample = df_prompts.sample(10)
-    #     print("========== Samples:")
-    #     print(df_sample)
-    #     print("========== Samples:")
-    #     input('')
-
 
     # feed prompts to the LM and gather predictions
     prompt_list = df_prompts['prompt'].values.tolist()
@@ -98,7 +91,11 @@ if __name__ == "__main__":
         pred_list += text_generated
     df_prompts['pred'] = pred_list
 
-    df_prompts.to_csv(model.model_name.replace('/', '_')+'_paraphrase_eval.csv')
+    df_prompts['prompt'] = df_prompts['prompt'].apply(lambda r: f'[START-TEMPLATE]{r}[END-TEMPLATE]')
+
+    df_prompts.to_csv(model.model_name.replace('/', '_')+'_paraphrase_eval.csv', sep='\t')
+
+    exit()
 
     # evaluate paraphrases + the model
 
