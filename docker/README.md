@@ -1,9 +1,17 @@
 # Debugging in container with visual code
 
-> docker build --platform linux/amd64 .
+Instructions to Danny:
+Start by manually creating an image from the Dockerfile using the VSCode console or run `docker build - < SYSIF/docker/Dockerfile -t sysif:latest --platform linux`  to build the image
+Then run `docker run -m 16g --platform linux/amd64 -it -dp 80:80 -v '/Users/dleybz/Documents/UPF Courses/Research/Neural Activation Patterns/Analysis 0/SYSIF':/analysis sysif` to run a container
+
+
+TO BE ABLE TO RUN ON LINUX/AMD64 THE PLATFORM, CAN'T BUILD THE IMAGE LOCALLY https://stackoverflow.com/questions/68342427/unable-to-find-image-namelatest-locally
+docker build - < SYSIF/docker/Dockerfile -t sysif:latest --platform linux/amd64
+docker run -m 16g --platform linux/amd64 -it -dp 80:80 -v '/Users/dleybz/Documents/UPF Courses/Research/Neural Activation Patterns/Analysis 0/' sysif
+
 
 if the image is "registry.sb.upf.edu/colt/sysif:0.1", do:
-> docker run -m 16g --platform linux/amd64 -it -dp 80:80 -v /Users/corentk/UNLACE/SYSIF:/sysif registry.sb.upf.edu/colt/sysif:0.3
+> docker run -m 16g --platform linux/amd64 -it -dp 80:80 -v "/Users/dleybz/Documents/UPF Courses/Research/Neural Activation Patterns/Analysis 0/SYSIF/docker/Dockerfile" 
 
 Then in visual code: docker > container > [select sysif image] > Attach Visual Studio Code
 
