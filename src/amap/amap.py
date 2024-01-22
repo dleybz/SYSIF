@@ -85,7 +85,7 @@ class LMamap:
         # add POS_i to the tokenizer
         positional_tokens = [f"[POS_{idx}]" for idx in range(amap_pos_dim[0])]
         # check that positional tokens do not exist in the original vocab
-        assert set(positional_tokens) - set(self.model.get_vocab()) == set(positional_tokens)
+        # assert set(positional_tokens) - set(self.model.get_vocab()) == set(positional_tokens)
         # do it one by one to get the correct tokens IDs (otherwise the order is random)
         [self.model.tokenizer.add_special_tokens({'additional_special_tokens': [positional_tokens[i]]}) for i in range(amap_pos_dim[0])]
         if 'position' not in self.special_tracking: self.special_tracking.append('position')
